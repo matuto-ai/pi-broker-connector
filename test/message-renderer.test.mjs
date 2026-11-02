@@ -70,3 +70,11 @@ test('correlation stays in persisted payload but never appears in default or exp
  }
  assert.deepEqual(m,before);assert.equal(JSON.parse(m.content.split('\n')[1]).correlation_id,'connectivity-test-pi');
 });
+
+test('expanded model details hide provider without changing raw provenance', () => {
+ const m=message(), before=m.content, shown=render(m,true);
+ assert(shown.includes('Model: fixture-model'));
+ assert(!shown.includes('fixture-provider'));
+ assert(m.content.includes('fixture-provider'));
+ assert.equal(m.content,before);
+});

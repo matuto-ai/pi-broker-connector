@@ -1,4 +1,4 @@
-import { basename } from 'node:path';
+import { projectMetadata } from './project-metadata.mjs';
 import { createHash } from 'node:crypto';
 
 const unsafe = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/gu;
@@ -10,7 +10,7 @@ function label(value, length) {
 const read = getter => { try { return getter(); } catch { return undefined; } };
 
 /** Observe supported Pi APIs only. Never inspect transcripts, provider config or credentials. */
-export function nativeSessionMetadata(pi, ctx, { clientId, nameOverride } = {}) {
+export function nativeSessionMetadata(pi, ctx, { clientId, nameOverride, config = {}, env = process.env } = {}) {
   const nativeId = read(() => ctx.sessionManager.getSessionId());
   const suffix = /^[0-9a-f-]{36}$/i.test(clientId ?? '') ? clientId.slice(0, 8)
     : createHash('sha256').update(String(nativeId ?? 'unknown')).digest('hex').slice(0, 8);
@@ -18,7 +18,7 @@ export function nativeSessionMetadata(pi, ctx, { clientId, nameOverride } = {}) 
   const name = `${label(nameOverride, 117) || label(nativeName, 117) || 'Pi'} [${suffix}]`;
   const cwd = read(() => ctx.cwd);
   // The project label is a basename, never a machine-specific absolute path.
-  const project = typeof cwd === 'string' ? label(basename(cwd.replaceAll('\\', '/')), 256) : null;
+  const project = projectMetadata(config, env, cwd);
   const selected = read(() => ctx.model);
   const provider = label(selected?.provider, 128), id = label(selected?.id, 256);
   const model = provider && id ? { provider, id, source: 'observed' }
@@ -28,6 +28,6 @@ export function nativeSessionMetadata(pi, ctx, { clientId, nameOverride } = {}) 
 
 export function metadataSummary(metadata) {
   if (!metadata) return '';
-  const model = metadata.model?.source === 'unknown' ? 'unknown' : `${metadata.model.provider}/${metadata.model.id}`;
+  const model = metadata.model?.source === 'unknown' ? 'unknown' : metadata.model.id;
   return `${metadata.name}; project ${metadata.project ?? 'unknown'}; model ${model}`;
 }

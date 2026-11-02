@@ -27,6 +27,8 @@ export function readConfig(env = process.env, explicitPath) {
       || raw.authorization_header !== 'Authorization' || raw.authorization_scheme !== 'Bearer' || raw.insecure_development !== false
       || typeof raw.token_file !== 'string' || !raw.token_file || basename(raw.token_file) !== raw.token_file || ['.', '..'].includes(raw.token_file)
       || typeof raw.broker_url !== 'string' || (raw.ca_file !== undefined && (typeof raw.ca_file !== 'string' || !raw.ca_file))) throw new LocalError('invalid_configuration');
+  const registrationVersion = raw.registration_version === undefined ? 1 : raw.registration_version;
+  if (![1,2].includes(registrationVersion)) throw new LocalError('invalid_configuration');
   let url;
   try { url = new URL(raw.broker_url); } catch { throw new LocalError('invalid_configuration'); }
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new LocalError('invalid_configuration');
@@ -43,7 +45,7 @@ export function readConfig(env = process.env, explicitPath) {
   if(configuredBroker){let expected;try{expected=new URL(configuredBroker);}catch{throw new LocalError('invalid_configuration');}if(expected.protocol!=='https:'||expected.username||expected.password||expected.search||expected.hash||expected.pathname!=='/'||expected.origin!==url.origin)throw new LocalError('broker_origin_mismatch');}
   const name = env.PSST_NAME || 'Pi';
   if (name.length > 128 || /[\x00-\x1f\x7f]/.test(name)) throw new LocalError('invalid_configuration');
-  return { url: url.href, ...(credentialId ? {credentialId} : {}), tokenFile: resolve(dirname(path), raw.token_file),
+  return { url: url.href, registrationVersion, ...(credentialId ? {credentialId} : {}), tokenFile: resolve(dirname(path), raw.token_file),
     ...(raw.ca_file ? { caFile: resolve(dirname(path), raw.ca_file) } : {}),
     ...storageLayout(env), name };
 }

@@ -65,9 +65,18 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       if (config.legacyStorage) notify(ctx, 'Psst is preserving existing legacy inbox storage. It has not been moved into Pi persistent storage; keep that directory until a coordinated offline migration.', 'warning');
       const hostSessionId = ctx.sessionManager.getSessionId();
       const current = createSession({ config, hostSessionId,
-        currentSessionId: () => ctx.sessionManager.getSessionId(),
-        observeMetadata: identity => nativeSessionMetadata(pi, ctx, {clientId: identity.client_id, nameOverride: env.PSST_NAME}),
-        onDiagnostic: event => { if (generation === epoch) { status = event.code; setStatus(ctx); } } });
+        currentSessionId: () => generation === epoch ? ctx.sessionManager.getSessionId() : null,
+        observeMetadata: identity => nativeSessionMetadata(pi, ctx, {clientId: identity.client_id, nameOverride: env.PSST_NAME, config, env}),
+        onDiagnostic: event => { if (generation === epoch) {
+          status = event.code; setStatus(ctx);
+          // Stop stale native consumers immediately; lifecycle serialization drains
+          // the old owner before reopening the same binding, never another session.
+          if (event.code === 'session_expired' && ready && owner === current
+            && ctx.sessionManager.getSessionId() === hostSessionId) {
+            delivery?.stop(); facade = null;
+            void schedule(next => connect(ctx, next, config)).catch(() => {});
+          }
+        } } });
       owner = current;
       delivery = new NativeDelivery({ session: current, pi, ctx, allowManual: diagnosticManual, diagnostic: code => { if (generation === epoch) { status = code; setStatus(ctx); } } });
       if (explicit) {delivery.setting('disconnected','false');pathStore.setDisconnected?.(hostSessionId,false);}
@@ -75,6 +84,10 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       status = 'connecting'; setStatus(ctx);
       await current.start();
       if (epoch !== generation || owner !== current) { await current.close(); return; }
+      // Startup may have selected a fresh incarnation. Never retain a delivery
+      // object bound to the retired journal.
+      delivery?.stop();
+      delivery = new NativeDelivery({ session: current, pi, ctx, allowManual: diagnosticManual, diagnostic: code => { if (generation === epoch) { status = code; setStatus(ctx); } } });
       const transportTools = createTools({ client: current.client, inbox: current.inbox });
       delete transportTools.broker_receive;
       facade = { ...transportTools,

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Resolve shared project labels with bounded local configuration and hide provider in readable presentation without changing model provenance.
+- Add explicitly opted-in registration v2 native-incarnation recovery. Expired identity replacement starts an empty journal and preserves old uncertain work separately. Default v1 behavior and broker enforcement remain unchanged.
+
 ## 0.6.0 — unreleased source candidate
 
 Publish the connector under `@matuto-ai/pi-psst-connector` and rename the GitHub repository to `pi-psst-connector`. Preserve native identity, saved installation credentials, journals and tool names. The old npm package remains available; migration requires an explicit package-source change. See [migration checklist](docs/migration-0.6.0.md).
