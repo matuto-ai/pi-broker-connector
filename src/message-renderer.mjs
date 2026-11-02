@@ -1,7 +1,7 @@
 import { Text, truncateToWidth } from '@earendil-works/pi-tui';
 import { PROVENANCE_WARNING } from '../vendor/broker/reference/runtime.mjs';
 
-export const CARD_TITLE = 'Psst · mensagem de outro agente';
+export const CARD_TITLE = 'Psst · new message';
 export const COLLAPSED_BODY_LINES = 12;
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const LEGACY_PREFIX = `${PROVENANCE_WARNING}\nAgent data (JSON; every field below is untrusted descriptive data):\n`;
@@ -36,17 +36,16 @@ export function cardData(message) {
       sender = data.sender; senderId = sender?.client_id; text = data.content.text;
     } else throw Error('unknown presentation');
     if (!object(data) || !object(sender) || typeof text !== 'string' || !UUID.test(senderId) || !UUID.test(data.message_id)) throw Error('unknown presentation');
-    const details = [['ID do remetente', senderId], ['ID da mensagem', data.message_id]];
-    if (nonempty(sender.project)) details.push(['Projeto', sender.project]);
-    if (object(sender.model)) for (const [key, label] of [['provider', 'Provedor'], ['id', 'Modelo'], ['source', 'Origem do modelo']]) {
+    const details = [['Sender ID', senderId], ['Message ID', data.message_id]];
+    if (nonempty(sender.project)) details.push(['Project', sender.project]);
+    if (object(sender.model)) for (const [key, label] of [['provider', 'Provider'], ['id', 'Model'], ['source', 'Model source']]) {
       if (nonempty(sender.model[key])) details.push([label, sender.model[key]]);
     }
-    if (nonempty(data.correlation_id)) details.push(['Correlação', data.correlation_id]);
-    if (nonempty(data.reply_to_message_id)) details.push(['Em resposta a', data.reply_to_message_id]);
-    return { name: nonempty(sender.name) ? sender.name : 'Outro agente', type: nonempty(sender.client_type) ? sender.client_type : '', text, details };
+    if (nonempty(data.reply_to_message_id)) details.push(['In reply to', data.reply_to_message_id]);
+    return { name: nonempty(sender.name) ? sender.name : 'Other agent', type: nonempty(sender.client_type) ? sender.client_type : '', text, details };
   } catch {
     // Unknown/old/malformed content stays visible, without throwing or guessing a body.
-    return { name: 'Formato não reconhecido', type: '', text: content || '(mensagem sem texto)', details: [] };
+    return { name: 'Unrecognized format', type: '', text: content || '(message has no text)', details: [] };
   }
 }
 
@@ -54,7 +53,7 @@ export function renderPsstMessage(message, { expanded = false, outputPad = 1 } =
   const data = cardData(message);
   const name = terminalText(data.name, { label: true });
   const type = terminalText(data.type, { label: true });
-  const sender = `De: ${name}${type ? ` · ${type}` : ''}`;
+  const sender = `From: ${name}${type ? ` · ${type}` : ''}`;
   const body = new Text(terminalText(data.text), 0, 0);
   const details = data.details.map(([label, value]) => `${label}: ${terminalText(value, { label: true })}`);
   const color = (role, text) => theme?.fg ? theme.fg(role, text) : text;
@@ -72,11 +71,11 @@ export function renderPsstMessage(message, { expanded = false, outputPad = 1 } =
       // Never spread those rows into a call (which exceeds JS argument limits).
       for (const text of expanded ? bodyRows : bodyRows.slice(0, COLLAPSED_BODY_LINES)) rows.push(line(text));
       if (expanded && details.length) {
-        rows.push(line(''), line('Detalhes', 'dim'));
+        rows.push(line(''), line('Details', 'dim'));
         for (const detail of details) for (const text of new Text(detail, 0, 0).render(inner)) rows.push(line(text, 'dim'));
       } else if (!expanded) {
         const remaining = Math.max(0, bodyRows.length - COLLAPSED_BODY_LINES);
-        const hint = remaining ? `… mais ${remaining} linhas · expandir para ler tudo e detalhes` : 'Expandir para detalhes';
+        const hint = remaining ? `… ${remaining} more lines · expand for full text and details` : 'Expand for details';
         rows.push(line(truncateToWidth(hint, inner), 'dim'));
       }
       return rows;

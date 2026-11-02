@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2 — unreleased source candidate
+
+- Use English card labels with the compact `Psst · new message` heading and `From:` sender line.
+- Hide correlation from both card views while preserving stored payloads, internal correlation, model provenance and receipt reconciliation.
+
 ## 0.5.1 — unreleased source candidate
 
 - Render incoming Psst messages as distinct, readable native history cards: sender and literal text first, IDs and metadata only on expansion. Long bodies use a bounded preview with native full expansion.
