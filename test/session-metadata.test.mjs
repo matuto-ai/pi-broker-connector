@@ -22,7 +22,7 @@ test('native metadata observes supported APIs, stable labels, project basename a
   assert.deepEqual(metadata, { name: 'Review [12345678]', project: 'project',
     model: { ...model, source: 'observed' } });
   assert.deepEqual(validateMetadata(metadata), metadata);
-  assert.equal(metadataSummary(metadata), 'Review [12345678]; project project; model fixture-provider/fixture-model');
+  assert.equal(metadataSummary(metadata), 'Review [12345678]; project project; model fixture-model');
   assert.ok(!JSON.stringify(metadata).includes('/private/parent'));
   assert.notEqual(nativeSessionMetadata({}, ctx, { clientId: '87654321-0000-4000-8000-000000000000' }).name, metadata.name);
   ctx.name = 'Renamed'; ctx.model = { provider: 'other-provider', id: 'other-model' };

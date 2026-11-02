@@ -38,7 +38,7 @@ export function cardData(message) {
     if (!object(data) || !object(sender) || typeof text !== 'string' || !UUID.test(senderId) || !UUID.test(data.message_id)) throw Error('unknown presentation');
     const details = [['Sender ID', senderId], ['Message ID', data.message_id]];
     if (nonempty(sender.project)) details.push(['Project', sender.project]);
-    if (object(sender.model)) for (const [key, label] of [['provider', 'Provider'], ['id', 'Model'], ['source', 'Model source']]) {
+    if (object(sender.model)) for (const [key, label] of [['id', 'Model'], ['source', 'Model source']]) {
       if (nonempty(sender.model[key])) details.push([label, sender.model[key]]);
     }
     if (nonempty(data.reply_to_message_id)) details.push(['In reply to', data.reply_to_message_id]);

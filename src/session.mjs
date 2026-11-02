@@ -1,12 +1,12 @@
-import { mkdirSync, writeFileSync, lstatSync, realpathSync } from 'node:fs';
+import { mkdirSync, writeFileSync, lstatSync, realpathSync, openSync, closeSync, fsyncSync, renameSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Inbox, newSessionIdentity } from '../vendor/broker/reference/inbox.mjs';
 import { BrokerClient } from '../vendor/broker/reference/client.mjs';
 import { AdapterRuntime } from '../vendor/broker/reference/runtime.mjs';
 import { LocalError } from '../vendor/broker/reference/errors.mjs';
 import { readPrivateJson } from './config.mjs';
-import { canonical, validateMetadata } from '../vendor/broker/src/protocol.mjs';
+import { canonical, validateMetadata, validateUuid } from '../vendor/broker/src/protocol.mjs';
 
 function privateDirectory(path) {
   mkdirSync(path, { recursive: true, mode: 0o700 });
@@ -27,6 +27,7 @@ export class PiBrokerSession {
     this.onDiagnostic = onDiagnostic;
     this.recovery = null; this.recoveryController = null;
     this.config = config;
+    this.clientOptions = clientOptions;
     this.observeMetadata = observeMetadata;
     this.observedMetadata = null;
     this.metadataSync = 'pending';
@@ -43,12 +44,67 @@ export class PiBrokerSession {
     catch (error) { if (error.code !== 'EEXIST') throw error; }
     const saved = readPrivateJson(identityFile);
     if (saved.hostSessionId !== hostSessionId || saved.brokerUrl !== config.url || saved.identity?.client_type !== 'pi' || saved.credentialId !== config.credentialId) throw new LocalError('session_mismatch');
-    this.inbox = new Inbox({ directory: this.directory, identity: saved.identity, ...(clientOptions.now ? {now:clientOptions.now} : {}) });
+    this.rootBinding = {hostSessionId, brokerUrl: config.url, ...(config.credentialId ? {credentialId:config.credentialId} : {})};
+    this.pointerFile = join(this.directory, 'current-incarnation.json');
+    // Keep the original lock: an older connector must not concurrently own root.
+    this.rootInbox = new Inbox({ directory: this.directory, identity: saved.identity, ...(clientOptions.now ? {now:clientOptions.now} : {}) });
+    this.inbox = this.rootInbox;
     try {
-      this.client = new BrokerClient({ url: config.url, tokenFile: config.tokenFile, caFile: config.caFile, inbox: this.inbox, requestTimeoutMs: 40000, ...clientOptions });
-      this.runtime = new AdapterRuntime({ client: this.client,
-        verifySession: () => this.isAlive(), isAlive: () => this.isAlive(), onDiagnostic });
-    } catch (error) { this.inbox.close(); throw error; }
+      let pointer;
+      try { lstatSync(this.pointerFile); pointer = readPrivateJson(this.pointerFile); }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (pointer) {
+        if ((clientOptions.registrationVersion ?? config.registrationVersion ?? 1) !== 2
+          || pointer.format !== 'pi-incarnation-v1' || pointer.identity?.client_type !== 'pi'
+          || Object.keys(pointer.identity).sort().join(',') !== 'client_id,client_type,session_instance_id'
+          || canonical(pointer.binding) !== canonical(this.rootBinding)
+          || pointer.directory !== `incarnation-${validateUuid(pointer.identity?.client_id)}`) throw new LocalError('session_mismatch');
+        const directory = join(this.directory, pointer.directory);
+        // A pointer is never authority to recreate a missing journal.
+        lstatSync(join(directory, 'inbox.sqlite'));
+        this.inbox = new Inbox({directory, identity:pointer.identity, ...(clientOptions.now ? {now:clientOptions.now} : {})});
+      }
+      this.buildTransport();
+    } catch (error) { if (this.inbox !== this.rootInbox) this.inbox.close(); this.rootInbox.close(); throw error; }
+  }
+  buildTransport() {
+    const config = this.config;
+    this.client = new BrokerClient({url:config.url, tokenFile:config.tokenFile, caFile:config.caFile,
+      inbox:this.inbox, requestTimeoutMs:40000, registrationVersion:config.registrationVersion ?? 1, ...this.clientOptions});
+    this.runtime = new AdapterRuntime({client:this.client, verifySession:()=>this.isAlive(), isAlive:()=>this.isAlive(),
+      onDiagnostic:this.onDiagnostic, closeOnLostSession:false});
+  }
+  async replaceExpiredIncarnation() {
+    if (!this.isAlive() || this.client.registrationVersion !== 2 || !this.client.expiredIdentityConfirmed) throw new LocalError('session_mismatch');
+    await this.runtime.stop({closeSession:false});
+    if (!this.isAlive()) throw new LocalError('session_mismatch');
+    const oldInbox = this.inbox;
+    // Temporary allocation name is independent of identity; final name is chosen only after creation.
+    const temporary = join(this.directory, `new-${randomUUID()}`);
+    const replacement = await this.client.createReplacementInbox({directory:temporary, verifySession:()=>this.isAlive()});
+    const identity = replacement.identity;
+    replacement.close();
+    const directoryName = `incarnation-${identity.client_id}`;
+    const directory = join(this.directory, directoryName);
+    renameSync(temporary, directory);
+    let next;
+    try {
+      next = new Inbox({directory,identity,...(this.clientOptions.now ? {now:this.clientOptions.now} : {})});
+      if (!this.isAlive()) throw new LocalError('session_mismatch');
+      const childDir = openSync(directory,'r'); try { fsyncSync(childDir); } finally { closeSync(childDir); }
+      const pointer = {format:'pi-incarnation-v1',binding:this.rootBinding,directory:directoryName,identity};
+      const temporaryPointer = join(this.directory, `.incarnation-${randomUUID()}.tmp`);
+      let fd;
+      try {
+        fd = openSync(temporaryPointer, 'wx', 0o600); writeFileSync(fd, JSON.stringify(pointer)); fsyncSync(fd);
+      } finally { if (fd !== undefined) closeSync(fd); }
+      renameSync(temporaryPointer, this.pointerFile);
+      // Child database creation and pointer rename must precede any new registration.
+      for (const path of [this.directory]) { const dir = openSync(path,'r'); try { fsyncSync(dir); } finally { closeSync(dir); } }
+      this.inbox = next;
+      if (oldInbox !== this.rootInbox) oldInbox.close();
+      this.buildTransport();
+    } catch (error) { next?.close(); throw error; }
   }
   isAlive() { return !this.closed && this.currentSessionId() === this.hostSessionId; }
   deliveryAllowed() { return this.isAlive() && !this.runtime.paused && !this.runtime.closed; }
@@ -59,7 +115,14 @@ export class PiBrokerSession {
   get metadata() { return this.observedMetadata ?? this.readMetadata(); }
   async start() {
     this.observedMetadata = this.readMetadata();
-    const result = await this.runtime.start(this.observedMetadata);
+    let result;
+    try { result = await this.runtime.start(this.observedMetadata); }
+    catch (error) {
+      if (error.code !== 'session_expired' || !this.client.expiredIdentityConfirmed) throw error;
+      await this.replaceExpiredIncarnation();
+      this.observedMetadata = this.readMetadata();
+      result = await this.runtime.start(this.observedMetadata);
+    }
     this.metadataSync = 'synced';
     void this.recoverOutgoing().catch(() => { if (this.isAlive()) this.recoveryDiagnostic(); });
     return result;
@@ -136,6 +199,7 @@ export class PiBrokerSession {
       await this.runtime.stop({ closeSession: false });
       await Promise.allSettled([...this.operations]);
       this.inbox.close();
+      if (this.rootInbox !== this.inbox) this.rootInbox.close();
     })();
     return this.closePromise;
   }

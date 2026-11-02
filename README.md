@@ -392,3 +392,38 @@ Container execution is a distinct gate, not implied by process-only tests.
 ## Migrating to the Psst package name
 
 Version 0.6.0 uses a new npm package and GitHub repository name. Follow the [migration checklist](docs/migration-0.6.0.md) before publication or upgrading an existing installation. Preserve all private Psst state and do not load both old and new sources.
+
+### Shared project label
+
+The project label is descriptive metadata, not a routing or authorization field.
+The connector reads only `AI_AGENTS_SANDBOX_PROJECT_NAME` by default. To select a
+different local environment variable, set `PSST_PROJECT_ENV=MY_PROJECT_LABEL`.
+This option contains the variable **name**, not its value; never select a secret.
+Pi uses `PSST_PROJECT_ENV` for its native installation; its broker-issued
+connection bundle is not a metadata settings file. Programmatic connector config
+can supply `projectEnv` as the same selector, overridden by `PSST_PROJECT_ENV`;
+an explicit nonempty `project` label takes precedence. No credential/enrollment bundle fields are changed.
+Labels must be well-formed, at most 256 characters, and contain no control/bidi
+characters. Missing/blank values use a native directory basename where available,
+otherwise remain unknown; absolute paths and the complete environment are not sent.
+
+Model metadata continues to come from the native host, not the project setting.
+Readable presentation shows model ID and project, not the provider; protocol and
+stored provenance remain unchanged. This common configuration is being rolled out
+across connectors; Antigravity adoption remains pending, not implemented here.
+
+### Opt-in registration v2 and expired identities
+
+Registration stays v1 unless this private connection bundle explicitly contains
+`registration_version: 2`. This does not enable broker retention or change enrollment.
+After the SDK confirms expiry of this owned identity with authenticated absence,
+the same verified native session can select a fresh, empty incarnation. A durable
+pointer selects its journal before registration; the original owner lock remains
+held. Delivery and tools are rebuilt for that journal. Old pending messages and
+uncertain outgoing operations stay in the old journal and are never copied/replayed.
+A missing selected journal, native-session mismatch, credential error, or uncertain
+storage outcome fails closed. Ordinary same-session inactivity remains resumable.
+The vendored runtime and test broker pin actual Psst commit
+`f32ddc79ec7b812062ed3f6de7b9a0c12a7128f3`. Local/native fixture tests are not acceptance
+in the user's authenticated agent environment. No data purge or retention activation
+is performed by this connector change.
