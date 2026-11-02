@@ -11,7 +11,7 @@ const render = (value,expanded=false,width=80) => renderPsstMessage(value,{expan
 
 test('default card shows sender and literal body, not JSON or metadata, without mutating the message',()=>{
  const m=message(),before=structuredClone(m),shown=render(m);
- assert.match(shown,/Psst · mensagem de outro agente/);assert.match(shown,/De: Revisor · pi/);
+ assert.match(shown,/Psst · new message/);assert.match(shown,/From: Revisor · pi/);
  assert.match(shown,/A revisão terminou\. Os testes passaram\./);assert.match(shown,/Pode continuar com a próxima etapa\./);
  assert.doesNotMatch(shown,/11111111|33333333|example-project|fixture-model|message_id|"sender"|authority/);
  assert.deepEqual(m,before);assert.equal(cardData(m).text,cardEnvelope().content.text);
@@ -19,8 +19,8 @@ test('default card shows sender and literal body, not JSON or metadata, without 
 test('native expansion shows complete long bodies and details; collapse remains bounded by wrapped rows',()=>{
  const text=Array.from({length:40},(_,i)=>`Linha ${i+1}: conteúdo literal com palavras suficientes para quebrar.`).join('\n')+'\nFIM INTACTO';
  const m=message(text),component=renderPsstMessage(m,{},theme),rows=component.render(48);
- assert.equal(rows.length,COLLAPSED_BODY_LINES+4);assert.match(rows.join('\n'),/mais \d+ linhas/);assert.doesNotMatch(rows.join('\n'),/FIM INTACTO/);
- const expanded=render(m,true,80);assert.match(expanded,/FIM INTACTO/);assert.match(expanded,/ID do remetente: 33333333/);assert.match(expanded,/ID da mensagem: 11111111/);assert.match(expanded,/Projeto: example-project/);assert.match(expanded,/Modelo: fixture-model/);
+ assert.equal(rows.length,COLLAPSED_BODY_LINES+4);assert.match(rows.join('\n'),/\d+ more lines/);assert.doesNotMatch(rows.join('\n'),/FIM INTACTO/);
+ const expanded=render(m,true,80);assert.match(expanded,/FIM INTACTO/);assert.match(expanded,/Sender ID: 33333333/);assert.match(expanded,/Message ID: 11111111/);assert.match(expanded,/Project: example-project/);assert.match(expanded,/Model: fixture-model/);
  component.invalidate();assert.deepEqual(component.render(48),rows);
 });
 test('single long lines, Unicode and tiny widths never overflow the available terminal columns',()=>{
@@ -41,14 +41,14 @@ test('JSON decoding cannot reactivate terminal controls, OSC links, bidi or spoo
 });
 test('frozen legacy receipt bytes render readably without removing or rewriting their original representation',()=>{
  const raw=readFileSync(new URL('./fixtures/legacy-native-v0.4.txt',import.meta.url),'utf8').trimEnd().replaceAll('__MESSAGE_ID__','11111111-1111-4111-8111-111111111111').replaceAll('__SENDER_ID__','33333333-3333-4333-8333-333333333333');
- const m={content:raw},shown=render(m);assert.match(shown,/De: peer · pi/);assert.match(shown,/hello/);assert.doesNotMatch(shown,/authority|descriptive_metadata|type.*text\/plain/);assert.equal(m.content,raw);
+ const m={content:raw},shown=render(m);assert.match(shown,/From: peer · pi/);assert.match(shown,/hello/);assert.doesNotMatch(shown,/authority|descriptive_metadata|type.*text\/plain/);assert.equal(m.content,raw);
 });
 test('unknown, malformed and empty records stay visible through a literal safe fallback',()=>{
  for(const content of ['future format\nbody','Broker message from AI agent bad\n{}','\u001b[2Jbroken','',null]){
-  const m={content},shown=render(m,true);assert.match(shown,/Psst · mensagem de outro agente/);assert.match(shown,/Formato não reconhecido/);assert.doesNotMatch(shown,/\u001b/);assert.deepEqual(m,{content});
+  const m={content},shown=render(m,true);assert.match(shown,/Psst · new message/);assert.match(shown,/Unrecognized format/);assert.doesNotMatch(shown,/\u001b/);assert.deepEqual(m,{content});
  }
  const [heading,json]=message().content.split('\n'),data=JSON.parse(json);data.sender.name='';
- assert.match(render({content:`${heading}\n${JSON.stringify(data)}`}),/De: Outro agente · pi/);
+ assert.match(render({content:`${heading}\n${JSON.stringify(data)}`}),/From: Other agent · pi/);
 });
 
 test('maximum control-heavy body expands safely even at one terminal column',()=>{
@@ -57,4 +57,16 @@ test('maximum control-heavy body expands safely even at one terminal column',()=
  assert.ok(rows.length>300000,'all escaped body characters remain available rather than silently truncating');
  assert.ok(rows.every(row=>visibleWidth(row)<=1));
  assert.match(rows.join(''),/\\u0000/);
+});
+
+test('correlation stays in persisted payload but never appears in default or expanded cards',()=>{
+ const [heading,json]=message().content.split('\n'),data=JSON.parse(json);
+ data.correlation_id='connectivity-test-pi';data.reply_to_message_id='22222222-2222-4222-8222-222222222222';
+ const m={content:`${heading}\n${JSON.stringify(data)}`},before=structuredClone(m);
+ for(const expanded of [false,true]){
+  const shown=render(m,expanded);
+  assert.doesNotMatch(shown,/connectivity-test-pi|Correlation|Correlação/);
+  assert.equal(shown.includes('In reply to:'),expanded);
+ }
+ assert.deepEqual(m,before);assert.equal(JSON.parse(m.content.split('\n')[1]).correlation_id,'connectivity-test-pi');
 });

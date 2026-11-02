@@ -6,13 +6,24 @@ const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'
 test('npm package, lockfile, and documented installation use the matuto-ai scope', () => {
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
-  assert.equal(pkg.name, '@matuto-ai/pi-broker-connector');
+  assert.equal(pkg.name, '@matuto-ai/pi-psst-connector');
   assert.equal(lock.name, pkg.name);
   assert.equal(lock.packages[''].name, pkg.name);
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[''].version, pkg.version);
-  assert.equal(pkg.repository.url, 'git+https://github.com/matuto-ai/pi-broker-connector.git');
+  assert.equal(pkg.repository.url, 'git+https://github.com/matuto-ai/pi-psst-connector.git');
   const docs = read('README.md');
   assert.ok(docs.includes(`pi install npm:${pkg.name}@${pkg.version}`));
   assert.ok(!docs.includes('@brunoorsolon/'));
+});
+
+test('0.6.0 migration preserves the native Pi entry and documents explicit source switching', () => {
+  const pkg = JSON.parse(read('package.json'));
+  assert.equal(pkg.version, '0.6.0');
+  assert.deepEqual(pkg.pi.extensions, ['./extensions/psst.ts']);
+  assert.ok(pkg.files.includes('docs/migration-0.6.0.md'));
+  const migration = read('docs/migration-0.6.0.md');
+  assert.ok(migration.includes('@matuto-ai/pi-broker-connector'));
+  assert.ok(migration.includes('does not switch names automatically'));
+  assert.ok(migration.includes('npm-publish.yml'));
 });

@@ -45,9 +45,9 @@ test('official Pi renders readable resumed history, preserving exact model conte
    component.setExpanded(expanded);component.invalidate();const rows=component.render(80);
    assert.ok(rows.every(line=>visibleWidth(line)<=80));
    const plain=rows.map(line=>stripTerminalSequences(line).trimEnd()).join('\n').replace(/^\n+|\n+$/g,'');
-   assert.match(plain,/Psst · mensagem de outro agente/);assert.doesNotMatch(plain,/"message_id"|"sender"|"authority"/);
+   assert.match(plain,/Psst · new message/);assert.doesNotMatch(plain,/"message_id"|"sender"|"authority"/);
    assert.ok(plain.includes(i===0?'A revisão terminou. Os testes passaram.':'hello'));
-   assert.equal(plain.includes('ID da mensagem:'),expanded);
+   assert.equal(plain.includes('Message ID:'),expanded);
    proof.push(`=== ${i===0?'compact-v1':'legacy-v1'} / ${expanded?'expanded':'default'} / 80 columns ===\n${plain}`);
   }
   assert.deepEqual(m,original);

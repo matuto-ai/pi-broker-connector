@@ -2,7 +2,7 @@
 
 A native Pi extension providing durable, session-bound messaging through the [Psst broker](https://github.com/matuto-ai/psst). Runs **inside the Pi process in your existing sandbox**. No host launcher, local model, provider subscription, or additional service is required by the connector.
 
-**Version 0.5.1 (unreleased source candidate):** readable native Psst history cards (sender/text by default, metadata on expansion), plus automatic-only production delivery, internal durable send identity, sent history/content/resend/cancel tools, readable native-session metadata, compact incoming messages and safe setup diagnostics. Existing URL-only approval, session isolation and receipt recovery are retained. Tested with the official Pi 1.4.0 SDK and a local fixture model; live authenticated user-sandbox acceptance remains a separate step.
+**Version 0.6.0 (unreleased source candidate):** readable native Psst history cards (sender/text by default, metadata on expansion), plus automatic-only production delivery, internal durable send identity, sent history/content/resend/cancel tools, readable native-session metadata, compact incoming messages and safe setup diagnostics. Existing URL-only approval, session isolation and receipt recovery are retained. Tested with the official Pi 1.4.0 SDK and a local fixture model; live authenticated user-sandbox acceptance remains a separate step.
 
 ## Requirements
 
@@ -19,13 +19,13 @@ Run the commands **inside the sandbox where Pi runs**, not on the host.
 ### From a reviewed checkout (works without npm publication)
 
 ```sh
-pi install /absolute/path/to/pi-broker-connector
+pi install /absolute/path/to/pi-psst-connector
 ```
 
 Or use the reviewed default branch:
 
 ```sh
-pi install git:github.com/matuto-ai/pi-broker-connector
+pi install git:github.com/matuto-ai/pi-psst-connector
 ```
 
 This uses the default branch. To pin a reviewed commit, append `@` and its exact SHA. Existing tags are unchanged and may still contain the old npm package identity; do not use an old tag as evidence of the new scope. Publish a new package version only after its source changes have been reviewed and the owner is ready to release it.
@@ -33,7 +33,7 @@ This uses the default branch. To pin a reviewed commit, append `@` and its exact
 ### From npm (only after publication)
 
 ```sh
-pi install npm:@matuto-ai/pi-broker-connector@0.5.1
+pi install npm:@matuto-ai/pi-psst-connector@0.6.0
 ```
 
 The command requires the version to be present on npm. If publication is still pending, use a reviewed checkout instead.
@@ -120,7 +120,7 @@ Use the existing bundle path; keep its `token` next to `connection.json`. After 
 Install or update **inside the same sandbox**, then use `/reload` in the running Pi:
 
 ```sh
-pi install npm:@matuto-ai/pi-broker-connector@0.5.1
+pi install npm:@matuto-ai/pi-psst-connector@0.6.0
 ```
 
 This installer command is not a second agent session. Reload normally loads the package, but do not assume an old running process loaded an update: check `/psst-status`; if it still exposes the old interface, restart Pi and `/resume` the intended conversation. Version 0.1.1 does not have `/psst-connect`; 0.1.2 adds that command, while automatic delivery requires 0.2.0 or later.
@@ -238,7 +238,7 @@ connector does not deploy those endpoints or claim that an older broker supports
 
 **Production delivery is automatic-only after connection.** Messages remain in the durable FIFO while Pi is busy, compacting, or has pending human input. At idle, the extension submits one provenance-labelled custom message through Pi's supported `sendMessage` API with `triggerTurn: true` and `deliverAs: followUp`. This wakes the model without terminal injection, impersonating a human, steering, interrupting, or editing a draft. Receiving a message can therefore spend model tokens under your existing provider/account. Polling alone does not call a model.
 
-The native Pi UI renders a distinct **Psst · mensagem de outro agente** card with the sender and literal body. The default view shows up to 12 wrapped body lines; native expansion shows the full body and routing/details. Text is not interpreted as Markdown, and terminal/bidi controls remain escaped. Existing history is rendered without rewriting its saved entries. This is UI presentation only, not another message or model turn.
+The native Pi UI renders a distinct **Psst · new message** card with the sender and literal body. The default view shows up to 12 wrapped body lines; native expansion shows the full body and English details. The sender line uses `From:`; correlation IDs are not displayed but remain unchanged in the stored payload. Text is not interpreted as Markdown, and terminal/bidi controls remain escaped. Existing history is rendered without rewriting its saved entries. This is UI presentation only, not another message or model turn.
 
 The unchanged stored/model-facing representation uses a compact display: `Broker message from AI agent <sender client ID>`
 followed by escaped JSON with `message_id`, `text` and compact sender metadata: name,
@@ -303,18 +303,18 @@ Tests cover private bundle validation, exact session isolation, duplicate owners
 
 ## Publishing
 
-This source candidate uses package version `0.5.1`; a future authorized release must use matching GitHub tag `v0.5.1`. The release workflow publishes the package only after its checks pass.
+This source candidate uses package version `0.6.0`; a future authorized release must use matching GitHub tag `v0.6.0`. The release workflow publishes the package only after its checks pass.
 
 The release workflow follows the existing Pi plugin convention: a published GitHub release triggers checks and npm publishing. It requires a `v<package.version>` tag and runs the native host gate before publishing. Nothing is published by CI on pull requests or ordinary pushes.
 
-For OIDC trusted publishing, configure the npm package's trusted publisher for GitHub owner `matuto-ai`, repo `pi-broker-connector`, workflow **`npm-publish.yml`** (filename only), allowing direct `npm publish`. No `NPM_TOKEN` is embedded or created. Use npm CLI >=11.5.1 with the supported Node version. If the npm package does not yet exist, the owner must complete the first package publication/account setup using npm's supported process before configuring its package settings. That setup is not performed by this repository. If the first manual publication uses `0.1.0`, bump the package version and matching release tag before the next automated publish; npm does not allow republishing the same version.
+For OIDC trusted publishing, configure the npm package's trusted publisher for GitHub owner `matuto-ai`, repo `pi-psst-connector`, workflow **`npm-publish.yml`** (filename only), allowing direct `npm publish`. No `NPM_TOKEN` is embedded or created. Use npm CLI >=11.5.1 with the supported Node version. If the npm package does not yet exist, the owner must complete the first package publication/account setup using npm's supported process before configuring its package settings. That setup is not performed by this repository. If the first manual publication uses `0.1.0`, bump the package version and matching release tag before the next automated publish; npm does not allow republishing the same version.
 
 Merge/release, npm scope ownership and trusted-publisher setup remain owner actions until explicitly authorized. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/), [Pi packages](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md), and [Pi extensions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md).
 
 ## Remove
 
 ```sh
-pi remove /absolute/path/to/pi-broker-connector
+pi remove /absolute/path/to/pi-psst-connector
 # or remove the same npm/git source used at installation
 ```
 
@@ -388,3 +388,7 @@ runner needs Docker (or `PI_TEST_CONTAINER_ENGINE=podman`) and Linux host
 networking so disposable clients can reach the local verified-TLS fixture.
 No image is published, daemon socket mounted, or user's sandbox modified.
 Container execution is a distinct gate, not implied by process-only tests.
+
+## Migrating to the Psst package name
+
+Version 0.6.0 uses a new npm package and GitHub repository name. Follow the [migration checklist](docs/migration-0.6.0.md) before publication or upgrading an existing installation. Preserve all private Psst state and do not load both old and new sources.

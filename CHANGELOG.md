@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 — unreleased source candidate
+
+Publish the connector under `@matuto-ai/pi-psst-connector` and rename the GitHub repository to `pi-psst-connector`. Preserve native identity, saved installation credentials, journals and tool names. The old npm package remains available; migration requires an explicit package-source change. See [migration checklist](docs/migration-0.6.0.md).
+
+- Use English card labels with the compact `Psst · new message` heading and `From:` sender line.
+- Hide correlation from both card views while preserving stored payloads, internal correlation, model provenance and receipt reconciliation.
+
 ## 0.5.1 — unreleased source candidate
 
 - Render incoming Psst messages as distinct, readable native history cards: sender and literal text first, IDs and metadata only on expansion. Long bodies use a bounded preview with native full expansion.
