@@ -1,4 +1,4 @@
-name: CI
+name: Verify
 on:
   push:
   pull_request:
@@ -20,25 +20,26 @@ jobs:
           node-version: '24'
           package-manager-cache: false
       - run: npm ci --ignore-scripts --legacy-peer-deps
-      - run: npm run check
-      - run: npm test
+      - name: Check source syntax
+        run: npm run check
+      - name: Run local tests
+        run: npm test
       - name: Install pinned official Pi in isolated fixture
         run: npm install --prefix "$RUNNER_TEMP/pi-host" --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.4.0
-      - name: Verify native loader and installer
-        run: npm run test:host
-        env:
-          PI_TEST_INSTALL: ${{ runner.temp }}/pi-host
-      - name: Verify actual Pi PTY, admin approval, HTTPS and thirty waiting SDK sessions
-        run: npm run test:approval
+      - name: Verify native host and protocol integration
+        run: |
+          npm run test:host
+          npm run test:approval
         env:
           PI_TEST_INSTALL: ${{ runner.temp }}/pi-host
           PSST_TEST_SOURCE: .ci/psst
       - name: Build disposable native Pi test container
         run: docker build -f test/containers/Containerfile -t psst-pi-approval-ci .
-      - name: Verify real container recreation with only native agent storage retained
+      - name: Verify container persistence
         run: npm run test:approval
         env:
           PI_TEST_INSTALL: ${{ runner.temp }}/pi-host
           PSST_TEST_SOURCE: .ci/psst
           PI_TEST_CONTAINER_IMAGE: psst-pi-approval-ci
-      - run: npm pack --dry-run
+      - name: Verify installable package
+        run: npm pack --dry-run --ignore-scripts
