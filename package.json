@@ -1,12 +1,12 @@
 {
-  "name": "@matuto-ai/pi-broker-connector",
-  "version": "0.5.2",
+  "name": "@matuto-ai/pi-psst-connector",
+  "version": "0.6.0",
   "description": "Session-bound Psst broker messaging tools for Pi",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/matuto-ai/pi-broker-connector.git"
+    "url": "git+https://github.com/matuto-ai/pi-psst-connector.git"
   },
   "engines": {
     "node": ">=24.19.0 <25"
@@ -22,7 +22,8 @@
     "src/",
     "vendor/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "docs/migration-0.6.0.md"
   ],
   "pi": {
     "extensions": [
