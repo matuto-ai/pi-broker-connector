@@ -64,7 +64,7 @@ test('running native expiry rebuilds extension owner and tools only for the same
  const instances=[],events={},tools={};let nativeId='A';
  const ctx={hasUI:false,sessionManager:{getSessionId:()=>nativeId}};
  installExtension({on:(n,fn)=>events[n]=fn,registerCommand(){},registerTool:tool=>tools[tool.name]=tool},
-  {Object:()=>({}),String:()=>({}),Optional:()=>({}),Integer:()=>({})},
+  {Object:()=>({}),String:()=>({}),Optional:()=>({}),Boolean:()=>({}),Integer:()=>({})},
   {env:{PSST_CONFIG_FILE:'/synthetic-config'},configReader:()=>config,pathStore:{isDisconnected:()=>false},
    createSession:options=>{const s=new PiBrokerSession({...options,clientOptions:{insecureDevelopment:true,now:()=>f.now,maxAttempts:1}});instances.push(s);return s;}});
  t.after(()=>events.session_shutdown());await events.session_start({},ctx);
@@ -104,7 +104,7 @@ test('superseded same-native startup cannot create a fresh incarnation after exp
  BrokerClient.prototype.createReplacementInbox=async function(options){entered();await gate;return original.call(this,options);};
  const ctx={hasUI:false,sessionManager:{getSessionId:()=>'A'}};
  installExtension({on:(n,fn)=>events[n]=fn,registerCommand(){},registerTool(){}},
-  {Object:()=>({}),String:()=>({}),Optional:()=>({}),Integer:()=>({})},
+  {Object:()=>({}),String:()=>({}),Optional:()=>({}),Boolean:()=>({}),Integer:()=>({})},
   {env:{PSST_CONFIG_FILE:'/synthetic-config'},configReader:()=>config,pathStore:{isDisconnected:()=>false},
    createSession:options=>new PiBrokerSession({...options,clientOptions:{insecureDevelopment:true,now:()=>f.now,maxAttempts:1}})});
  try {

@@ -17,7 +17,7 @@ const {approvalTlsFixture}=await import(pathToFileURL(join(resolve(source),'test
 async function runScenario(t,deferApproval=false){
  const f=await approvalTlsFixture(t),marker='pi-native-approval-'+randomUUID();
  const agent=join(f.directory,'persistent-agent');
- const control={deferApproval,containerImage:process.env.PI_TEST_CONTAINER_IMAGE,containerEngine:process.env.PI_TEST_CONTAINER_ENGINE||'docker',directory:f.directory,brokerUrl:f.brokerUrl,cert:f.certFile,piCli:join(resolve(host),'node_modules/@earendil-works/pi-coding-agent/dist/cli.js'),extension:resolve('extensions/psst.ts'),messageMarker:marker};
+ const control={deferApproval,containerImage:process.env.PI_TEST_CONTAINER_IMAGE,containerEngine:process.env.PI_TEST_CONTAINER_ENGINE||'docker',directory:f.directory,brokerUrl:f.brokerUrl,cert:f.certFile,piCli:join(resolve(host),'node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'),extension:resolve('extensions/psst.ts'),messageMarker:marker};
  const controlFile=join(f.directory,'native-control.json');writeFileSync(controlFile,JSON.stringify(control),{mode:0o600});
  const child=spawn('python3',['scripts/approval-native-pty.py',controlFile],{stdio:['ignore','pipe','pipe']});
  let peer,partial='',stderr='',events=[],work=Promise.resolve(),failure,selection,credential,firstRecipient,requestId;

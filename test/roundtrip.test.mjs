@@ -43,7 +43,7 @@ test('native connect command reconnects same live broker session; failed startup
   const config={url:f.base,tokenFile,stateDirectory:join(f.dir,'command-state'),name:'Pi command'};
   const commands={},events={},tools={},statuses=[];let saved=null,fail=false;
   const ctx={hasUI:true,sessionManager:{getSessionId:()=> 'current-native-session'},ui:{notify(){},setStatus:(_key,value)=>statuses.push(value)}};
-  const Type={Object:()=>({}),String:()=>({}),Optional:()=>({}),Integer:()=>({})};
+  const Type={Object:()=>({}),String:()=>({}),Optional:()=>({}),Boolean:()=>({}),Integer:()=>({})};
   installExtension({on:(n,fn)=>events[n]=fn,registerCommand:(n,c)=>commands[n]=c,registerTool:t=>tools[t.name]=t},Type,{
     env:{},connectionResolver:async file=>file,pathStore:{read:()=>saved,write:value=>saved=value},configReader:(_env,path)=>path?config:null,
     createSession:options=>{if(fail)throw new LocalError('invalid_configuration');return new PiBrokerSession({...options,clientOptions:{insecureDevelopment:true,now:()=>f.now,maxAttempts:1}});},

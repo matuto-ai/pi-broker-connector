@@ -23,7 +23,7 @@ test('native tools expose no send key, paginate metadata10, fetch content, expli
  const {f,config,make}=await fixture(t),recipient=make('recipient');await recipient.client.register(metadata);t.after(()=>recipient.close());
  const tools={},commands={},events={};let branch=[],sender;
  const ctx={hasUI:false,sessionManager:{getSessionId:()=> 'sender',getBranch:()=>branch}};
- const Type={Object:(properties,options)=>({properties,...options}),String:options=>({...options}),Optional:type=>({...type,optional:true}),Integer:options=>({...options})};
+ const Type={Object:(properties,options)=>({properties,...options}),String:options=>({...options}),Optional:type=>({...type,optional:true}),Boolean:()=>({type:"boolean"}),Integer:options=>({...options})};
  installExtension({on:(name,handler)=>events[name]=handler,registerCommand:(name,command)=>commands[name]=command,registerTool:tool=>tools[tool.name]=tool},Type,{env:{},pathStore:{read:()=>'/fixture/private-bundle'},configReader:()=>config,createSession:()=>sender=make('sender')});
  t.after(()=>events.session_shutdown());await events.session_start({},ctx);
  assert.equal('send_key' in tools.broker_send.parameters.properties,false);assert.equal(tools.broker_receive,undefined);assert.equal(tools.broker_acknowledge,undefined);
@@ -88,7 +88,7 @@ test('native shutdown aborts stalled HTTP send/read, drains ownership and preser
   let sender,blocked=false;const tools={},events={};
   const args=name==='broker_send'?{recipient_id:recipient.inbox.identity.client_id,text:'stalled'}:{};
   const ctx={hasUI:false,sessionManager:{getSessionId:()=> 'sender',getBranch:()=>[{type:'message',id:'entry',timestamp:new Date(f.now).toISOString(),message:{role:'assistant',content:[{type:'toolCall',id:'call',name,arguments:args}]}}]}};
-  const Type={Object:()=>({}),String:()=>({}),Optional:()=>({}),Integer:()=>({})};
+  const Type={Object:()=>({}),String:()=>({}),Optional:()=>({}),Boolean:()=>({}),Integer:()=>({})};
   installExtension({on:(name,handler)=>events[name]=handler,registerCommand(){},registerTool:tool=>tools[tool.name]=tool},Type,{env:{},pathStore:{read:()=>'/fixture/private-bundle'},configReader:()=>config,createSession:()=>sender=make('sender')});
   t.after(()=>events.session_shutdown());await events.session_start({},ctx);const id=sender.inbox.identity.client_id;
   const handler=f.app.server.listeners('request')[0];f.app.server.removeListener('request',handler);
@@ -129,4 +129,25 @@ test('native bounded recovery skips expired backlog, reports unknown summary and
  assert.deepEqual(sender.inbox.db.prepare('SELECT * FROM outgoing WHERE key<>? ORDER BY key').all(key),before,'expired unknowns retain identity, payload and retry deadline');
  assert.equal((await sender.client.sentHistory()).messages.length,1,'eligible intent recovers its original accepted message, without replacement');
  assert.deepEqual(await sender.recoverOutgoing(),[recovered[1]],'repeat pass reports the unresolved backlog without new sends');
+});
+
+test('native discovery exposes bounded paging and includes offline peers only when requested',async t=>{
+ const {f,config,make}=await fixture(t),online=make('online'),offline=make('offline');
+ t.after(()=>online.close());t.after(()=>offline.close());
+ await online.start();await offline.start();const offlineId=offline.inbox.identity.client_id;await offline.close();
+ const tools={},events={};let sender;
+ const Type={Object:(properties,options)=>({type:'object',properties,...options}),String:options=>({type:'string',...options}),Optional:type=>({...type,optional:true}),Integer:options=>({type:'integer',...options}),Boolean:()=>({type:'boolean'})};
+ const ctx={hasUI:false,sessionManager:{getSessionId:()=> 'discovery'}};
+ installExtension({on:(name,handler)=>events[name]=handler,registerCommand(){},registerTool:tool=>tools[tool.name]=tool},Type,{env:{},pathStore:{read:()=>'/fixture/private-bundle'},configReader:()=>config,createSession:()=>sender=make('discovery')});
+ t.after(()=>events.session_shutdown());await events.session_start({},ctx);
+ const tool=tools.broker_list_clients,schema=tool.parameters;
+ assert.equal(schema.additionalProperties,false);assert.deepEqual(schema.properties.connected,{type:'boolean',optional:true});
+ assert.deepEqual(schema.properties.limit,{type:'integer',minimum:1,maximum:100,optional:true});assert.deepEqual(schema.properties.cursor,{type:'string',optional:true});
+ const requests=[],request=sender.client.request.bind(sender.client);sender.client.request=(method,path,options)=>{if(path.startsWith('/v1/clients'))requests.push(path);return request(method,path,options);};
+ const call=async args=>{const result=await tool.execute('discovery',args,undefined,undefined,ctx);assert.equal(result.isError,undefined,JSON.stringify(result.details));return result.details;};
+ assert.equal((await call({})).clients.some(c=>c.client_id===offlineId),false);
+ const ids=[];let cursor;do{const result=await call({connected:false,client_type:'pi',limit:1,...(cursor?{cursor}: {})});assert.equal(result.clients.length,1);ids.push(result.clients[0].client_id);cursor=result.next_cursor;}while(cursor);
+ assert.equal(new Set(ids).size,3);assert.ok(ids.includes(offlineId));assert.ok(ids.includes(online.inbox.identity.client_id));
+ assert.ok(requests.some(path=>path.includes('connected=false')&&path.includes('limit=1')&&path.includes('cursor=')));
+ const all=await call({connected:false});assert.equal(all.clients.find(c=>c.client_id===offlineId).connected,false);assert.equal(all.clients.find(c=>c.client_id===online.inbox.identity.client_id).connected,true);
 });

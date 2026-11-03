@@ -154,7 +154,7 @@ test('extension refreshes native events, status and identity consistently; metad
   const config = { url: f.base, tokenFile, stateDirectory: join(f.dir, 'extension-clients'), name: 'Pi' };
   const commands = {}, events = {}, tools = {}, notices = [];
   ctx.hasUI = true; ctx.ui = { setStatus() {}, notify: text => notices.push(text) };
-  const Type = { Object: () => ({}), String: () => ({}), Optional: () => ({}), Integer: () => ({}) };
+  const Type = { Object: () => ({}), String: () => ({}), Optional: () => ({}), Boolean: () => ({}), Integer: () => ({}) };
   let session;
   installExtension({ on: (name, fn) => events[name] = fn, registerCommand: (name, value) => commands[name] = value, registerTool: tool => tools[tool.name] = tool }, Type, {
     env: {}, pathStore: { read: () => '/fixture/connection.json' }, configReader: () => config,

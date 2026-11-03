@@ -37,6 +37,10 @@ test('official Pi 1.4.0 discovers/loads packed extension and its automatic-only 
   assert.equal(loaded.extensions.length,1);
   const ext=loaded.extensions[0];
   assert.deepEqual([...ext.tools.keys()].sort(),['broker_cancel','broker_identity','broker_list_clients','broker_message_content','broker_message_status','broker_resend','broker_send','broker_sent_history']);
+  const { Check } = await import(pathToFileURL(join(resolve(host),'node_modules/typebox/build/value/index.mjs')).href);
+  const discoverySchema = ext.tools.get('broker_list_clients').definition.parameters;
+  for (const args of [{}, {connected:false,limit:1}, {connected:true,limit:100,cursor:'continuation',project:'project'}]) assert.equal(Check(discoverySchema,args),true);
+  for (const args of [{connected:'false'}, {limit:0}, {limit:101}, {limit:1.5}, {cursor:42}, {unknown:true}]) assert.equal(Check(discoverySchema,args),false);
   assert.ok(ext.commands.has('psst-status'));
   assert.ok(ext.commands.has('psst-connect'));
   assert.ok(ext.handlers.has('session_info_changed'));

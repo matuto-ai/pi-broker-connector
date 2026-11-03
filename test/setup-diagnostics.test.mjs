@@ -18,7 +18,7 @@ test('runtime gate preserves the engine range and reports unsupported hosts with
   assert.ok(commands['psst-doctor']);assert.ok(events.session_start);
   assert.equal(runtimeDescription('SECRET\n').includes('SECRET'),false);
   const entry=readFileSync(new URL('../extensions/psst.ts',import.meta.url),'utf8');
-  assert.ok(entry.indexOf('if (!supportedNode())') < entry.indexOf("await import('../src/extension.mjs')"));
+  assert.ok(entry.indexOf('if (!supportedNode())') < entry.indexOf("require('../src/extension.mjs')"));
   assert.equal(entry.includes("import { installExtension } from"),false);
 });
 
@@ -55,4 +55,16 @@ test('doctor reports mode and type defects without chmod, database opens or secr
   assert.equal(statSync(root).mode&0o777,0o755);
   assert.equal(readFileSync(file,'utf8'),'not-a-database-secret');
   assert.equal(doctorText(checks).includes('not-a-database-secret'),false);
+});
+
+test('ownership conversation references are bounded, safe and omit path-shaped labels',()=>{
+ const diagnostic=ctx=>diagnosticText(setupDiagnostic({code:'owner_conflict'},'connection_start','not_started',ctx));
+ const named=diagnostic({sessionManager:{getSessionId:()=> 'abcdef12-3456-7890-abcd-123456789012',getSessionName:()=> 'Review'}});
+ assert.match(named,/"Review" \[abcdef12\]/);
+ const privatePath='/private/do-not-expose';
+ const hidden=diagnostic({sessionManager:{getSessionId:()=>privatePath,getSessionName:()=>privatePath}});
+ assert.equal(hidden.includes(privatePath),false);assert.match(hidden,/Pi conversation \[[a-f0-9]{8}\]/);
+ const unavailable=diagnostic({sessionManager:{getSessionId(){throw Error(privatePath);},getSessionName(){throw Error(privatePath);}}});
+ assert.match(unavailable,/Pi conversation \[unknown\]/);assert.equal(unavailable.includes(privatePath),false);
+ const long=diagnostic({sessionManager:{getSessionId:()=> 'id',getSessionName:()=> 'x'.repeat(10000)}});assert.ok(long.length<600);
 });
