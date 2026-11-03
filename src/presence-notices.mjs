@@ -1,3 +1,4 @@
+import { canStartNativeTurn } from './native-boundary.mjs';
 import { BrokerError } from '../vendor/broker/reference/client.mjs';
 import { statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -22,8 +23,8 @@ export function presenceText(event) {
 
 /** Separate transport journal: never changes message delivery/read receipts. */
 export class PresenceNotices {
-  constructor({session,pi,ctx,allowed=()=>true,diagnostic=()=>{}}) {
-    Object.assign(this,{session,pi,ctx,allowed,diagnostic});
+  constructor({session,pi,ctx,allowed=()=>true,canStart=()=>canStartNativeTurn(ctx),diagnostic=()=>{}}) {
+    Object.assign(this,{session,pi,ctx,allowed,canStart,diagnostic});
     this.inbox=session.inbox; this.stopped=false;this.running=null;this.controller=new AbortController();
     this.inbox.transaction(()=>this.inbox.db.exec(`CREATE TABLE IF NOT EXISTS pi_presence_notices(
       event_id TEXT PRIMARY KEY, content TEXT NOT NULL, state TEXT NOT NULL,
@@ -89,7 +90,7 @@ export class PresenceNotices {
         if(row.state==='pending' && row.content!==content){
           this.inbox.transaction(()=>this.inbox.db.prepare('UPDATE pi_presence_notices SET content=? WHERE event_id=?').run(content,event.event_id),{growth:Buffer.byteLength(content)});row.content=content;
         }
-        if(row.state!=='pending'||!this.active()||this.ctx.isIdle?.()!==true||this.ctx.hasPendingMessages?.()!==false||typeof this.pi.sendMessage!=='function')continue;
+        if(row.state!=='pending'||!this.active()||!this.canStart()||typeof this.pi.sendMessage!=='function')continue;
         const file=this.ctx.sessionManager.getSessionFile?.();if(typeof file!=='string'||!file.startsWith('/'))continue;
         let offset;try{offset=statSync(file).size;}catch{continue;}
         const injectionId=randomUUID();
