@@ -298,3 +298,60 @@ test('bare connect retries a paused transport instead of claiming an already hea
  assert.equal(f.instances.length,before+1);assert.equal(f.instances.at(-1).inbox.identity.client_id,id);assert.equal(f.instances.at(-1).deliveryAllowed(),true);assert.deepEqual(f.pathStore.snapshot(),saved);assert.equal(enrollments,0);assert.match(f.notices.at(-1),/reconnected/);
  await host.events.session_shutdown();
 });
+
+
+test('abort holds the exact conversation across reload; explicit connect and human input resume it',async t=>{
+ const f=fixture(t);let host=f.load();await host.commands['psst-connect'].handler(f.file,f.ctx);
+ const paused=()=>f.instances.at(-1).inbox.db.prepare("SELECT value FROM pi_delivery_settings WHERE key='human_paused'").get()?.value;
+ await host.events.agent_settled({aborted:true},f.ctx);assert.equal(paused(),'true');
+ await host.events.input({source:'extension',text:'yes'},f.ctx);assert.equal(paused(),'true');
+ await host.events.session_shutdown();host=f.load();await host.events.session_start({},f.ctx);assert.equal(paused(),'true');
+ await host.commands['psst-status'].handler('',f.ctx);assert.ok(f.notices.some(text=>text.includes('paused after an aborted turn')));
+ await host.commands['psst-connect'].handler('',f.ctx);assert.equal(paused(),'false');
+ await host.events.agent_settled({aborted:true},f.ctx);await host.events.input({source:'interactive',text:'continue'},f.ctx);assert.equal(paused(),'false');
+ await host.events.agent_settled({aborted:true},f.ctx);f.setSession('native-B');await host.events.session_start({},f.ctx);assert.notEqual(paused(),'true');
+ f.setSession('native-A');await host.events.session_start({},f.ctx);assert.equal(paused(),'true');
+ await host.events.session_shutdown();
+});
+
+
+test('background approval and failed replacement rollback preserve human abort hold',async t=>{
+ const f=fixture(t);let host=f.load();await host.commands['psst-connect'].handler(f.file,f.ctx);
+ await host.events.agent_settled({aborted:true},f.ctx);await host.events.session_shutdown();
+ const prior=f.pathStore.snapshot(),replacement=join(f.home,'replacement-paused.json');
+ const bundle=JSON.parse(readFileSync(f.file));bundle.broker_url='https://replacement.example';writeFileSync(replacement,JSON.stringify(bundle),{mode:0o600});
+ f.pathStore.writePending({intentId:'paused-replacement',brokerUrl:'https://replacement.example',requestId:'paused-request',selectionRevision:prior.revision});
+ host=f.load({approvalClient:{readApprovalState:async()=>({state:'approved',requestId:'paused-request',connectionFile:replacement})}});
+ await host.events.session_start({},f.ctx);
+ const paused=()=>f.instances.at(-1).inbox.db.prepare("SELECT value FROM pi_delivery_settings WHERE key='human_paused'").get()?.value;
+ assert.equal(paused(),'true','background approval cannot resume an aborted conversation, including a replacement mailbox');
+ await host.events.session_shutdown();
+ host=f.load({setupUI:approvedSetup(f.file,'https://broker.example'),createSession:options=>{
+  if(new URL(options.config.url).origin==='https://broker.example')throw Error('replacement fails');
+  const instance=new PiBrokerSession(options);instance.start=async()=>{};f.instances.push(instance);return instance;
+ }});
+ await host.events.session_start({},f.ctx);assert.equal(paused(),'true');await host.commands['psst-setup'].handler('',f.ctx);
+ assert.equal(paused(),'true','rollback is transport recovery, not a human resume');
+ assert.ok(f.notices.some(text=>text.includes('approved connection could not attach')));
+ await host.events.session_shutdown();
+});
+
+
+test('a late explicit reconnect cannot clear an abort received during registration',async t=>{
+ const f=fixture(t);f.pathStore.write(f.file,'https://broker.example');let release,entered,instance;
+ const started=new Promise(resolve=>entered=resolve),gate=new Promise(resolve=>release=resolve);
+ const host=f.load({createSession:options=>{instance=new PiBrokerSession(options);instance.start=async()=>{entered();await gate;};return instance;}});
+ const connecting=host.commands['psst-connect'].handler('',f.ctx);await started;
+ await host.events.agent_settled({aborted:true},f.ctx);release();await connecting;
+ assert.equal(instance.inbox.db.prepare("SELECT value FROM pi_delivery_settings WHERE key='human_paused'").get()?.value,'true');
+ await host.events.session_shutdown();
+});
+
+test('abort while resolving an explicit connection file wins over earlier resume intent',async t=>{
+ const f=fixture(t);let release,entered;const started=new Promise(resolve=>entered=resolve),gate=new Promise(resolve=>release=resolve);
+ const host=f.load({connectionResolver:async file=>{entered();await gate;return file;}});
+ const connecting=host.commands['psst-connect'].handler(f.file,f.ctx);await started;
+ await host.events.agent_settled({aborted:true},f.ctx);release();await connecting;
+ assert.equal(f.instances.at(-1).inbox.db.prepare("SELECT value FROM pi_delivery_settings WHERE key='human_paused'").get()?.value,'true');
+ await host.events.session_shutdown();
+});

@@ -1,3 +1,4 @@
+import { canStartNativeTurn } from './native-boundary.mjs';
 import { openSync, closeSync, readSync, fstatSync, statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { nativeMessage, NATIVE_FORMAT } from './message-format.mjs';
@@ -29,8 +30,9 @@ export function findPersistedReceipt(file, offset, expected) {
 }
 
 export class NativeDelivery {
-  constructor({ session, pi, ctx, allowManual = false, diagnostic = () => {} }) {
+  constructor({ session, pi, ctx, allowManual = false, canStart = () => canStartNativeTurn(ctx), diagnostic = () => {} }) {
     this.session = session; this.inbox = session.inbox; this.pi = pi; this.ctx = ctx;
+    this.canStart = canStart; this.pauseInMemory = false;
     let lastDiagnostic;
     this.diagnostic = code => { if (code !== lastDiagnostic) { lastDiagnostic = code; diagnostic(code); } };
     this.allowManual = allowManual === true;
@@ -48,6 +50,13 @@ export class NativeDelivery {
   }
   get mode() { if (!this.allowManual) return 'auto'; return this.inbox.db.prepare("SELECT value FROM pi_delivery_settings WHERE key='mode'").get()?.value || 'auto'; }
   get disconnected() { return this.inbox.db.prepare("SELECT value FROM pi_delivery_settings WHERE key='disconnected'").get()?.value === 'true'; }
+  get humanPaused() { return this.pauseInMemory || this.inbox.db.prepare("SELECT value FROM pi_delivery_settings WHERE key='human_paused'").get()?.value === 'true'; }
+  setHumanPaused(paused) {
+    // Fail closed in memory if the durable pause/resume write fails.
+    this.pauseInMemory = true;
+    try { this.setting('human_paused', String(paused)); this.pauseInMemory = paused; }
+    catch { this.diagnostic('native_pause_storage_failed'); }
+  }
   setting(key, value) { this.inbox.transaction(() => this.inbox.db.prepare('INSERT OR REPLACE INTO pi_delivery_settings(key,value) VALUES(?,?)').run(key,value)); }
   setMode(mode) { if (!['auto','manual'].includes(mode) || (mode === 'manual' && !this.allowManual)) throw new LocalError('invalid_configuration'); this.setting('mode',mode); }
   start() { this.timer = setInterval(() => this.tick(), 500); this.timer.unref?.(); }
@@ -72,11 +81,12 @@ export class NativeDelivery {
         this.diagnostic('native_handoff_unknown'); return;
       }
       if (this.mode !== 'auto' || this.disconnected) return;
+      if (this.humanPaused) { this.diagnostic('native_paused_after_abort'); return; }
       if (this.session.deliveryAllowed?.() !== true) { this.diagnostic('native_delivery_paused'); return; }
       if (head.envelope.sender.client_id === this.inbox.identity.client_id) { this.diagnostic('self_message_requires_manual'); return; }
       // Leave busy/compacting sessions alone. The synchronous check + native call
       // happen in one JS turn; native Pi owns its own run/continuation scheduling.
-      if (typeof this.pi.sendMessage !== 'function' || this.ctx.isIdle?.() !== true || this.ctx.hasPendingMessages?.() !== false) return;
+      if (typeof this.pi.sendMessage !== 'function' || !this.canStart()) return;
       const file = this.ctx.sessionManager.getSessionFile?.();
       if (typeof file !== 'string' || !file.startsWith('/')) { this.diagnostic('native_session_not_persistent'); return; }
       let offset = 0;

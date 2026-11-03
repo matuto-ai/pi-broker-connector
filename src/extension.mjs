@@ -1,3 +1,4 @@
+import { NativeInputBoundary } from './native-boundary.mjs';
 import { PresenceNotices, PRESENCE_TYPE } from './presence-notices.mjs';
 import {randomUUID} from 'node:crypto';
 import { runtimeDescription } from './runtime-support.mjs';
@@ -28,6 +29,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
   let connectedConfig = null, attachmentActive = false;
   let presence = null, presenceTimer = null;
   let owner = null, facade = null, delivery = null, ready = false, status = 'not_configured';
+  const nativeBoundary = new NativeInputBoundary(pi, ctx => owner?.hostSessionId === ctx?.sessionManager?.getSessionId?.() ? delivery : null);
   let approvalWatch = null, setupGeneration = 0, approvalStatus = null;
   const cancelSetup = () => { setupGeneration++; approvalWatch?.stop(); approvalWatch=null; approvalStatus=null; };
   let generation = 0, operations = Promise.resolve();
@@ -57,7 +59,9 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
     const prior = owner; owner = null; facade = null; ready = false;
     if (prior) await prior.close();
   };
-  const connect = async (ctx, epoch, selectedConfig, explicit = false) => {
+  const connect = async (ctx, epoch, selectedConfig, explicit = false, {resumeHuman = false, resumeRevision, preserveHumanPause = false} = {}) => {
+    const startAbortRevision = nativeBoundary.abortRevision;
+    let keepHumanPause = preserveHumanPause || nativeBoundary.isPaused(ctx) || (owner?.hostSessionId === ctx.sessionManager.getSessionId() && delivery?.humanPaused === true);
     await stop();
     if (epoch !== generation) return;
     try {
@@ -82,7 +86,8 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
           }
         } } });
       owner = current;
-      delivery = new NativeDelivery({ session: current, pi, ctx, allowManual: diagnosticManual, diagnostic: code => { if (generation === epoch) { status = code; setStatus(ctx); } } });
+      delivery = new NativeDelivery({ session: current, pi, ctx, allowManual: diagnosticManual, canStart: () => nativeBoundary.allows(ctx), diagnostic: code => { if (generation === epoch) { status = code; setStatus(ctx); } } });
+      keepHumanPause ||= delivery.humanPaused;
       if (explicit) {delivery.setting('disconnected','false');pathStore.setDisconnected?.(hostSessionId,false);}
       if (delivery.disconnected) { await stop(); status = 'disconnected'; setStatus(ctx); return; }
       status = 'connecting'; setStatus(ctx);
@@ -91,14 +96,17 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       // Startup may have selected a fresh incarnation. Never retain a delivery
       // object bound to the retired journal.
       delivery?.stop();
-      delivery = new NativeDelivery({ session: current, pi, ctx, allowManual: diagnosticManual, diagnostic: code => { if (generation === epoch) { status = code; setStatus(ctx); } } });
+      delivery = new NativeDelivery({ session: current, pi, ctx, allowManual: diagnosticManual, canStart: () => nativeBoundary.allows(ctx), diagnostic: code => { if (generation === epoch) { status = code; setStatus(ctx); } } });
+      keepHumanPause ||= nativeBoundary.abortRevision !== startAbortRevision;
+      if (resumeHuman && resumeRevision === nativeBoundary.abortRevision) nativeBoundary.resume(ctx, resumeRevision);
+      else if (keepHumanPause || resumeHuman) delivery.setHumanPaused(true);
       const transportTools = createTools({ client: current.client, inbox: current.inbox });
       delete transportTools.broker_receive;
       facade = { ...transportTools,
         ...(diagnosticManual ? createCooperativeInbox({ inbox: current.inbox, isActive: () => current.isAlive() }) : {}),
         broker_identity: async () => ({ ...current.inbox.identity, metadata: current.metadata, metadata_sync: current.metadataSync, local_mode: delivery?.mode === 'auto' ? 'native_auto' : 'cooperative_pull', status, pending_count: current.inbox.stats().pending_count }) };
       connectedConfig = config; ready = true; status = 'connected'; setStatus(ctx); delivery.start();
-      presence = new PresenceNotices({session:current,pi,ctx,allowed:()=>delivery?.mode==='auto'&&!delivery?.disconnected,diagnostic:code=>{if(generation===epoch){status=code;setStatus(ctx);}}});
+      presence = new PresenceNotices({session:current,pi,ctx,allowed:()=>delivery?.mode==='auto'&&!delivery?.disconnected,canStart:()=>!delivery?.humanPaused&&nativeBoundary.allows(ctx),diagnostic:code=>{if(generation===epoch){status=code;setStatus(ctx);}}});
       presenceTimer=setInterval(()=>void presence?.tick(),5000);presenceTimer.unref?.();
       void presence.tick();
       await refreshMetadata(ctx);
@@ -137,18 +145,18 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       const sameWinner=selection=>selection?.approvalRequestId===result.requestId&&selection.approvalIntentId===pending.intentId&&selection.brokerUrl===pending.brokerUrl&&selection.connectionFile===path;
       const selected=pathStore.snapshot?.();
       if(selected?.revision!==pending.selectionRevision&&!sameWinner(selected))throw new LocalError('selection_changed');
-      const previous=ready?connectedConfig:null;
+      const previous=ready?connectedConfig:null,preserveHumanPause=delivery?.humanPaused===true;
       attachmentActive=true;
       try {
-      const task=schedule(epoch=>connect(ctx,epoch,config,true)),expected=generation;await task;
+      const task=schedule(epoch=>connect(ctx,epoch,config,true,{preserveHumanPause})),expected=generation;await task;
       if(generation!==expected||ctx.sessionManager.getSessionId()!==nativeId)return;
       if(pathStore.readPending?.()?.intentId!==pending.intentId){
-        if(previous)await schedule(epoch=>connect(ctx,epoch,previous,true));
+        if(previous)await schedule(epoch=>connect(ctx,epoch,previous,true,{preserveHumanPause}));
         else await schedule(async()=>{await stop();status='setup_superseded';setStatus(ctx);});
         notify(ctx,'Psst setup was superseded during attachment. The newer request and selection were not overwritten.','warning');return;
       }
       if(!ready){
-        if(previous)await schedule(epoch=>connect(ctx,epoch,previous,true));
+        if(previous)await schedule(epoch=>connect(ctx,epoch,previous,true,{preserveHumanPause}));
         notify(ctx,'Psst approved connection could not attach. Previous selection is unchanged; retry /psst-setup.','warning');return;
       }
       const saved=sameWinner(pathStore.snapshot?.())?true:pathStore.write(path,pending.brokerUrl,pending.selectionRevision,{requestId:result.requestId,intentId:pending.intentId});
@@ -221,8 +229,9 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
   pi.registerCommand('psst-connect', {
     description: 'Reconnect this Pi conversation using its saved credential; an absolute file is compatibility-only',
     handler: async (args, ctx) => {
+      const resumeRevision = nativeBoundary.abortRevision;
       if (!args.trim()) {
-        if (ready && owner?.isAlive() && owner.deliveryAllowed?.() === true) { notify(ctx, 'Psst is already connected. Use /psst-status for this session.'); return; }
+        if (ready && owner?.isAlive() && owner.deliveryAllowed?.() === true) { nativeBoundary.resume(ctx, resumeRevision); notify(ctx, delivery.humanPaused ? 'Psst is connected, but the delivery pause could not be cleared. Use /psst-status; pending messages are preserved.' : 'Psst is already connected. Automatic delivery resumed; use /psst-status for this session.'); return; }
         try {
           const nativeId = ctx.sessionManager.getSessionId();
           const selectedFile = env.PSST_CONFIG_FILE || env.PSST_CONFIG || pathStore.read();
@@ -233,7 +242,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
             const saved = pathStore.snapshot?.();
             if (saved?.brokerUrl && new URL(config.url).origin !== saved.brokerUrl) throw new LocalError('broker_origin_mismatch');
           }
-          const task = schedule(epoch => connect(ctx, epoch, config, true)), expected = generation;
+          const task = schedule(epoch => connect(ctx, epoch, config, true, {resumeHuman:true,resumeRevision})), expected = generation;
           await task;
           if (ready && generation === expected && ctx.sessionManager.getSessionId() === nativeId) notify(ctx, 'Psst reconnected using the saved credential and this conversation’s mailbox. No enrollment was requested.');
         } catch (error) {
@@ -247,7 +256,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
         const path = await connectionResolver(validateConfigPath(args.trim()), {env});
         if (epochBeforePairing !== generation || ctx.sessionManager.getSessionId() !== sessionBeforePairing) throw new LocalError('session_mismatch');
         const config = configReader(env, path);
-        const task=schedule(epoch => connect(ctx, epoch, config, true)),expected=generation;await task;
+        const task=schedule(epoch => connect(ctx, epoch, config, true, {resumeHuman:true,resumeRevision})),expected=generation;await task;
         if(!ready||generation!==expected||ctx.sessionManager.getSessionId()!==sessionBeforePairing)return;
         const saved=pathStore.write(path,new URL(config.url).origin,revision);
         if (env.PSST_CONFIG_FILE || env.PSST_CONFIG) notify(ctx, 'An existing PSST_CONFIG_FILE/PSST_CONFIG environment setting still takes precedence after /reload.', 'warning');
@@ -279,6 +288,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
     description: 'Show this Pi session’s Psst broker status, readable metadata and exact client ID',
     handler: async (_args, ctx) => {
       notify(ctx, runtimeDescription());
+      if (delivery?.humanPaused) notify(ctx, 'Psst automatic delivery is paused after an aborted turn. Pending messages are preserved; send your next input or use /psst-connect to resume.');
       if (lastSetupDiagnostic) notify(ctx, diagnosticText(lastSetupDiagnostic), 'warning');
       await refreshMetadata(ctx);
       if (ready && owner) notify(ctx, `${metadataSummary(owner.metadata)}; metadata ${owner.metadataSync}.`);

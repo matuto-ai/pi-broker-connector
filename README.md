@@ -181,6 +181,31 @@ Example instruction to your Pi agent, after the other connector is running:
 
 The recipient receives the native message automatically and can reply to the sender's exact client ID, preserving `reply_to_message_id` where useful. No manual receive or ACK token is part of production use. The peers' enrollment scopes must overlap.
 
+### Human-input boundaries
+
+Automatic messages and prolonged-offline notices wait while Pi is busy, has queued
+input, has a nonempty core editor draft, or is waiting for an extension UI prompt
+(confirmation, input, selector, editor or custom dialog). The connector only checks
+whether editor text is empty; it never saves, logs, clears or submits that text.
+Unreadable UI state blocks new automatic turns. Existing persisted native receipts
+can still reconcile while a human-input boundary is blocked.
+
+Aborting a native turn pauses new automatic Psst turns for that conversation.
+The pause is saved with its mailbox and survives reload/resume; another conversation
+is independent. Send normal interactive/RPC input that reaches Psst, or run `/psst-connect`
+explicitly to resume. Commands and input consumed by another extension may not
+reach the input handler; `/psst-connect` is the explicit resume option. An extension-origin input or peer message such as `yes` never clears the
+pause. `/psst-status` explains a pending abort pause. Transport can continue storing
+incoming messages safely while presentation waits; no permission is granted by resuming.
+
+The boundary regression uses the official Pi 1.4.0 SDK, its real UI prompt events,
+abort API and a local faux provider, with controlled UI values and broker events.
+It verifies both message and notice journals, but is not an authenticated user-TUI
+acceptance test. Pi must expose a dialog through its supported UI-prompt events for
+this guard to observe it; external dialogs or an RPC client's unreported draft are
+not claimed covered. Upgrade/reload reproduction, authenticated permission/login
+flows and any remaining issue #12 acceptance still need their recorded evidence.
+
 ### Recognizing native sessions
 
 `/psst-status`, `broker_identity.metadata` and peer discovery show the native Pi

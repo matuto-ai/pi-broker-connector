@@ -97,3 +97,26 @@ test('production upgrades stored manual mode without bypassing auth, disconnect 
  appendFileSync(f.file,JSON.stringify({type:'custom_message',id:'actual-entry',...f.sent[0].message})+'\n');f.delivery.tick();assert.equal(f.inbox.head(),null);
  f.reopen();f.delivery.tick();assert.equal(f.sent.length,1,'consumed native receipt never replays');
 });
+
+
+test('unfinished human draft blocks new turns without changing text or durable state',t=>{
+ const f=fixture(t);let draft='unfinished human input';f.ctx.hasUI=true;f.ctx.ui={getEditorText:()=>draft};
+ f.inbox.accept(f.envelope(1));f.delivery.tick();assert.equal(f.sent.length,0);assert.equal(f.inbox.head().state,'pending');
+ assert.equal(draft,'unfinished human input');draft=' ';f.delivery.tick();assert.equal(f.sent.length,0,'whitespace is still a draft');
+ draft='';f.delivery.tick();assert.equal(f.sent.length,1);
+ draft='new draft';f.delivery.tick();assert.equal(f.inbox.head(),null,'known receipts still reconcile');assert.equal(draft,'new draft');
+});
+
+test('human abort hold survives reload and preserves receipt reconciliation',t=>{
+ const f=fixture(t);f.inbox.accept(f.envelope(1));f.inbox.accept(f.envelope(2));f.delivery.tick();
+ f.delivery.setHumanPaused(true);f.delivery.tick();assert.equal(f.inbox.head().state,'pending');assert.equal(f.sent.length,1);
+ f.reopen();assert.equal(f.delivery.humanPaused,true);f.delivery.tick();assert.equal(f.sent.length,1);
+ f.delivery.setHumanPaused(false);f.delivery.tick();assert.equal(f.sent.length,2);
+});
+
+test('pause and resume storage failure keep automatic turns blocked in memory',t=>{
+ const f=fixture(t);f.inbox.accept(f.envelope(1));
+ f.inbox.failurePoint=point=>{if(point==='before_commit')throw Error('private storage failure');};f.delivery.setHumanPaused(true);f.delivery.tick();assert.equal(f.sent.length,0);
+ f.delivery.setHumanPaused(false);f.delivery.tick();assert.equal(f.sent.length,0);assert.equal(f.delivery.humanPaused,true);
+ f.inbox.failurePoint=()=>{};f.delivery.setHumanPaused(false);f.delivery.tick();assert.equal(f.sent.length,1);
+});

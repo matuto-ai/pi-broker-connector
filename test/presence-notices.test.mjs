@@ -17,7 +17,7 @@ function fixture(t){
  const ctx={isIdle:()=>idle,hasPendingMessages:()=>false,sessionManager:{getSessionFile:()=>file}};
  let worker=new PresenceNotices({session,pi,ctx});
  t.after(async()=>{await worker.stop();inbox.close();rmSync(directory,{recursive:true,force:true});});
- return {get worker(){return worker;},get inbox(){return inbox;},event,client,sent,calls,acks,file,setPage:f=>page=f,setIdle:v=>idle=v,setBehavior:v=>behavior=v,setAckFails:v=>ackFails=v,setAllowed:v=>allowed=v,async reopen(){await worker.stop();inbox.close();inbox=new Inbox({directory,identity});worker=new PresenceNotices({session,pi,ctx});}};
+ return {get worker(){return worker;},get inbox(){return inbox;},event,client,sent,calls,acks,file,ctx,setPage:f=>page=f,setIdle:v=>idle=v,setBehavior:v=>behavior=v,setAckFails:v=>ackFails=v,setAllowed:v=>allowed=v,async reopen(){await worker.stop();inbox.close();inbox=new Inbox({directory,identity});worker=new PresenceNotices({session,pi,ctx});}};
 }
 test('capability gate, idle pause, durable presentation then notice-only ACK',async t=>{
  const f=fixture(t);f.client.policy.presence_events=false;await f.worker.tick();assert.equal(f.calls.length,0);f.client.policy.presence_events=true;
@@ -49,4 +49,13 @@ test('capacity-limited snapshot preserves pending; cursor work is bounded',async
  assert.equal(f.inbox.db.prepare("SELECT COUNT(*) AS n FROM pi_presence_notices WHERE state='pending'").get().n,1);
  let pages=0;f.setPage(()=>({events:[],next_cursor:String(++pages)}));await f.worker.tick();assert.equal(pages,32);
  assert.equal(f.inbox.db.prepare("SELECT COUNT(*) AS n FROM pi_presence_notices WHERE state='pending'").get().n,1);
+});
+
+
+test('presence notices wait for human draft and keep prior receipt recovery independent',async t=>{
+ const f=fixture(t);let draft='unfinished approval response';f.ctx.hasUI=true;f.ctx.ui={getEditorText:()=>draft};
+ await f.worker.tick();assert.equal(f.sent.length,0);assert.equal(f.acks.length,0);
+ assert.equal(f.inbox.db.prepare('SELECT state FROM pi_presence_notices').get().state,'pending');
+ draft='';await f.worker.tick();assert.equal(f.sent.length,1);
+ draft='still typing';await f.worker.tick();assert.equal(f.acks.length,1);assert.equal(f.sent.length,1);assert.equal(draft,'still typing');
 });
