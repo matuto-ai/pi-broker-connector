@@ -19,7 +19,7 @@ export function findPersistedReceipt(file, offset, expected) {
     const text = bytes.subarray(0, count).toString('utf8');
     for (const line of text.slice(0, text.lastIndexOf('\n') + 1).split('\n')) {
       let row; try { row = JSON.parse(line); } catch { continue; }
-      if (row.type === 'custom_message' && row.customType === CUSTOM_TYPE && typeof row.id === 'string'
+      if (row.type === 'custom_message' && row.customType === (expected.customType ?? CUSTOM_TYPE) && typeof row.id === 'string'
           && row.details?.message_id === expected.messageId && row.details?.injection_id === expected.injectionId
           && row.details?.client_id === expected.clientId && row.content === expected.content) return row.id;
     }

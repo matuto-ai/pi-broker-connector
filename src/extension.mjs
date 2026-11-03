@@ -1,3 +1,4 @@
+import { PresenceNotices, PRESENCE_TYPE } from './presence-notices.mjs';
 import {randomUUID} from 'node:crypto';
 import { runtimeDescription } from './runtime-support.mjs';
 import { setupDiagnostic, diagnosticText, inspectPsstStorage, doctorText } from './setup-diagnostics.mjs';
@@ -7,7 +8,7 @@ import {ApprovalWatch} from './approval-watch.mjs';
 import {nativeSetup,brokerOrigin} from './native-setup.mjs';
 import { resolveConnectionFile } from './connect-config.mjs';
 import { NativeDelivery, CUSTOM_TYPE } from './native-delivery.mjs';
-import { renderPsstMessage } from './message-renderer.mjs';
+import { renderPsstMessage, renderPresenceNotice } from './message-renderer.mjs';
 import { createConfigPathStore, validateConfigPath } from './config-path.mjs';
 import { readConfig } from './config.mjs';
 import { PiBrokerSession } from './session.mjs';
@@ -19,11 +20,13 @@ import { LocalError, safeError } from '../vendor/broker/reference/errors.mjs';
 export function installExtension(pi, Type, { configReader = readConfig, env = process.env, pathStore = null, connectionResolver = resolveConnectionFile, createSession = options => new PiBrokerSession(options), approvalClient = {beginApproval: options => import('../vendor/broker/reference/approval.mjs').then(m=>m.beginApproval(options)), pollApproval: options => import('../vendor/broker/reference/approval.mjs').then(m=>m.pollApproval(options)), readApprovalState: options => import('../vendor/broker/reference/approval.mjs').then(m=>m.readApprovalState(options))}, setupUI = nativeSetup } = {}) {
   // Presentation only: the original persisted message/model input remains untouched.
   pi.registerMessageRenderer?.(CUSTOM_TYPE, renderPsstMessage);
+  pi.registerMessageRenderer?.(PRESENCE_TYPE, renderPresenceNotice);
   // Defer storage validation until a command/startup can surface a sanitized diagnostic.
   pathStore ??= Object.fromEntries(['read', 'snapshot', 'readPending', 'isDisconnected', 'setDisconnected', 'writePending', 'clearPending', 'write'].map(name => [name, (...args) => createConfigPathStore(undefined, env)[name](...args)]));
   let lastSetupDiagnostic = null;
   const diagnosticManual = env.PSST_DIAGNOSTIC_MANUAL === '1';
   let connectedConfig = null, attachmentActive = false;
+  let presence = null, presenceTimer = null;
   let owner = null, facade = null, delivery = null, ready = false, status = 'not_configured';
   let approvalWatch = null, setupGeneration = 0, approvalStatus = null;
   const cancelSetup = () => { setupGeneration++; approvalWatch?.stop(); approvalWatch=null; approvalStatus=null; };
@@ -50,6 +53,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
   };
   const stop = async () => {
     delivery?.stop(); delivery = null;
+    clearInterval(presenceTimer); presenceTimer=null; await presence?.stop(); presence=null;
     const prior = owner; owner = null; facade = null; ready = false;
     if (prior) await prior.close();
   };
@@ -94,11 +98,15 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
         ...(diagnosticManual ? createCooperativeInbox({ inbox: current.inbox, isActive: () => current.isAlive() }) : {}),
         broker_identity: async () => ({ ...current.inbox.identity, metadata: current.metadata, metadata_sync: current.metadataSync, local_mode: delivery?.mode === 'auto' ? 'native_auto' : 'cooperative_pull', status, pending_count: current.inbox.stats().pending_count }) };
       connectedConfig = config; ready = true; status = 'connected'; setStatus(ctx); delivery.start();
+      presence = new PresenceNotices({session:current,pi,ctx,allowed:()=>delivery?.mode==='auto'&&!delivery?.disconnected,diagnostic:code=>{if(generation===epoch){status=code;setStatus(ctx);}}});
+      presenceTimer=setInterval(()=>void presence?.tick(),5000);presenceTimer.unref?.();
+      void presence.tick();
       await refreshMetadata(ctx);
     } catch (error) {
       if (epoch !== generation) return;
       status = safeError(error).error?.code || 'connection_failed';
       delivery?.stop(); delivery = null;
+      clearInterval(presenceTimer); presenceTimer=null; await presence?.stop(); presence=null;
       const prior = owner; owner = null; facade = null; ready = false;
       if (prior) await prior.close();
       reportSetupFailure(ctx,error,attachmentActive?'approved_attachment':'connection_start',attachmentActive?'approved':'not_started');

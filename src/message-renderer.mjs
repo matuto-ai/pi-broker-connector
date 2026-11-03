@@ -82,3 +82,8 @@ export function renderPsstMessage(message, { expanded = false, outputPad = 1 } =
     },
   };
 }
+
+/** Transport notices deliberately have a distinct title from peer messages. */
+export function renderPresenceNotice(message) {
+  return new Text('Psst · transport notice\n' + terminalText(typeof message?.content === 'string' ? message.content : '(notice unavailable)'), 1, 0);
+}

@@ -6,6 +6,9 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
+import { PresenceNotices, PRESENCE_TYPE } from '../src/presence-notices.mjs';
+import { Inbox, newSessionIdentity } from '../vendor/broker/reference/inbox.mjs';
+import { randomUUID } from 'node:crypto';
 import { nativeMessage } from '../src/message-format.mjs';
 import { findPersistedReceipt } from '../src/native-delivery.mjs';
 import { cardEnvelope } from './card-fixture.mjs';
@@ -58,4 +61,26 @@ test('official Pi renders readable resumed history, preserving exact model conte
  const output=proof.join('\n\n')+'\n';
  if(process.env.PI_RENDER_PROOF)writeFileSync(process.env.PI_RENDER_PROOF,output);
  assert.equal(output,readFileSync(new URL('./fixtures/native-card-terminal.txt',import.meta.url),'utf8'));
+ // Real host persistence/render/model-context boundary for transport notices.
+ const inbox=new Inbox({directory:join(root,'notice-inbox'),identity:newSessionIdentity('pi')});
+ const event={event_id:randomUUID(),recipient_id:randomUUID(),type:'recipient_offline',presence_state:'disconnected',
+   last_heartbeat_at:new Date(0).toISOString(),created_at:new Date(600000).toISOString(),observed_at:new Date(600000).toISOString(),
+   messages:[{message_id:randomUUID(),delivery_state:'queued',delivery_uncertain:false}],has_more_messages:false};
+ const ack=[],client={policy:{presence_events:true},async presenceEvents(){return {events:[event],next_cursor:null};},async acknowledgePresenceEvent(id){ack.push(id);}};
+ const notices=new PresenceNotices({session:{inbox,client,isAlive:()=>true,deliveryAllowed:()=>true},
+   pi:{sendMessage:m=>manager.appendCustomMessageEntry(m.customType,m.content,m.display,m.details)},
+   ctx:{sessionManager:manager,isIdle:()=>true,hasPendingMessages:()=>false}});
+ try {
+   await notices.tick();assert.equal(ack.length,0);
+   const saved=SessionManager.open(manager.getSessionFile()).getBranch().filter(row=>row.customType===PRESENCE_TYPE);
+   assert.equal(saved.length,1);assert.equal(saved[0].details.message_id,event.event_id);
+   const renderNotice=loaded.extensions[0].messageRenderers.get(PRESENCE_TYPE);assert.equal(typeof renderNotice,'function');
+   const row=saved[0],m=createCustomMessage(row.customType,row.content,row.display,row.details,row.timestamp);
+   const component=new CustomMessageComponent(m,renderNotice);
+   assert.match(component.render(80).map(stripTerminalSequences).join('\n'),/Psst · transport notice/);
+   assert.ok(JSON.stringify(convertToLlm(SessionManager.open(manager.getSessionFile()).buildSessionContext().messages)).includes(event.event_id));
+   await notices.tick();await notices.tick();assert.deepEqual(ack,[event.event_id]);
+   assert.equal(SessionManager.open(manager.getSessionFile()).getBranch().filter(row=>row.customType===PRESENCE_TYPE).length,1);
+ } finally {await notices.stop();inbox.close();}
+
 });

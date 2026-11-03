@@ -427,3 +427,27 @@ The vendored runtime and test broker pin actual Psst commit
 `f32ddc79ec7b812062ed3f6de7b9a0c12a7128f3`. Local/native fixture tests are not acceptance
 in the user's authenticated agent environment. No data purge or retention activation
 is performed by this connector change.
+### Prolonged-offline transport notices
+
+On brokers advertising `presence_events`, Pi checks for prolonged-offline notices
+in the background, without model-token polling. The broker determines the grace
+(default 600 seconds from the recipient's last heartbeat, distinct from its
+presence lease). Notices contain bounded transport metadata, never message bodies.
+They are separate from agent messages and are not instructions or reply timeouts.
+
+The connector persists each event ID before native presentation. A dedicated
+`psst-transport-notice` entry is handed off only while the session is idle and
+connected. The event ACK follows exact durable Pi transcript evidence. This ACK
+means the notice entered native history, **not** human/model reading, successful
+message delivery, a reply, or task completion. A lost native result is reconciled
+without reinjection; a lost ACK is retried idempotently. Obsolete events returned
+as authenticated `message_not_found` on ACK are retired locally. No automatic
+resend, cancellation, session closure, credential change, or registry cleanup
+occurs. Older brokers require no change and receive no event API requests.
+
+The local journal is bounded to 256 rows. Acknowledged rows and never-presented notices absent from a complete,
+non-capacity-limited broker snapshot can be retired. Uncertain native handoffs
+are preserved and capacity blocks new notices rather than
+replaying uncertain handoffs. Shutdown aborts/drains the notice poll before
+closing storage. Each poll is bounded to 32 pages of at most ten events, with a three-second
+request deadline. Native host qualification is distinct from fixture tests.
