@@ -66,6 +66,23 @@ polling does not call a model. Network failures retain the same request and key;
 missing/corrupt state never silently creates a replacement. Denied/expired/revoked
 requests stop and require explicit setup again.
 
+If a previously approved installation now reports `unauthenticated` or
+`forbidden`, its cached approval is not current server authorization. Run
+`/psst-setup`, enter the same broker URL and explicitly confirm replacement.
+Give the newly displayed request ID to the administrator. Repeating setup or
+reopening while that candidate is pending reuses it; an approved candidate whose
+attachment failed is retried without creating another request. The predecessor
+stays selected until the candidate actually connects. Its credentials and unread
+journals are preserved, but its access may remain revoked. Do not delete state,
+copy credentials or remove locks to recover.
+
+Status reports `cached_approved` as local history, `replacement_pending` while
+waiting for replacement approval, and `connected` only after actual attachment.
+A retained setup intent can be a completed selection shared by waiting native
+sessions; it does not itself permit replacement. Restart, reconnect, a 401 or
+incoming peer input never creates a replacement request.
+
+
 `/psst-disconnect` durably cancels only this native session's pending wait and
 stops its transport/delivery; it does not revoke credentials or cancel other
 sessions' shared installation request. A late approval cannot reconnect that

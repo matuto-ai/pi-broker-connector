@@ -32,3 +32,26 @@ test('uncertain result never writes selection or creates a replacement',async t=
  await assert.rejects(nativeSetup(ctx,{env:f.env,approvalClient:{readApprovalState:async()=>null,beginApproval:async()=>{calls++;throw Error('fixture unknown');}}}));
  assert.equal(calls,1);assert.equal(f.settings.read(),null);
 });
+
+test('approved uncommitted candidate resumes, but selected predecessor requires confirmation',async t=>{
+ const f=fixture(t),brokerUrl='https://broker.example';
+ const previous={state:'approved',requestId:'prior',connectionFile:'/fixture/connection.json'};
+ let confirms=0,begins=0,last;
+ const ctx={hasUI:true,ui:{input:async()=>brokerUrl,confirm:async()=>{confirms++;return true;}}};
+ const opts={env:f.env,resumeRequest:{brokerUrl,requestId:'prior'},approvalClient:{readApprovalState:async()=>previous,beginApproval:async o=>{begins++;last=o;return previous;}}};
+ await nativeSetup(ctx,opts);assert.equal(confirms,0);assert.equal(last.replaceRequestId,undefined);
+ for(const selection of [{brokerUrl,approvalRequestId:'prior'},{brokerUrl,connectionFile:previous.connectionFile}]){
+  await nativeSetup(ctx,{...opts,selection});assert.equal(last.replaceRequestId,'prior');
+ }
+ assert.equal(confirms,2);assert.equal(begins,3);
+ ctx.ui.confirm=async()=>false;
+ assert.equal(await nativeSetup(ctx,{...opts,selection:{brokerUrl,approvalRequestId:'prior'}}),null);
+ assert.equal(begins,3);
+});
+
+test('replacement confirmation canceled by session transition cannot begin a request',async t=>{
+ const f=fixture(t);let current=true,begins=0;
+ await nativeSetup({hasUI:true,ui:{input:async()=> 'https://broker.example',confirm:async()=>{current=false;return true;}}},{
+  env:f.env,stillCurrent:()=>current,approvalClient:{readApprovalState:async()=>({state:'revoked',requestId:'old'}),beginApproval:async()=>begins++}});
+ assert.equal(begins,0);
+});
