@@ -326,18 +326,20 @@ No settings, credentials, enrollment, provider routing, Nginx rules, or host ins
 npm ci --ignore-scripts --legacy-peer-deps
 npm run check
 npm test
-npm install --prefix /tmp/psst-pi-host --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.4.0
-PI_TEST_INSTALL=/tmp/psst-pi-host npm run test:host
-npm pack --dry-run
 ```
 
-Tests cover private bundle validation, exact session isolation, duplicate ownership, durable resume, real HTTP broker A→B→A with disposable fixture credentials, idempotent sends, persistent read receipts, invalid/uncertain ACKs, and rollback behavior. The host gate uses the **official Pi 1.4.0 extension loader and package installer** in a temporary HOME. It does not use a real model or claim a physical terminal/user-sandbox test. Fixtures allow numeric-loopback HTTP only in test code; public config stays HTTPS-only.
+The unit suite tests connector behavior with controlled Pi/client doubles and
+isolated temporary files or SQLite journals. It covers configuration, commands,
+setup decisions, session identity, message rendering, delivery boundaries,
+receipts, metadata and sanitized diagnostics. No broker server, native Pi process,
+PTY, container, historical package download or model account is needed.
+See [TESTING.md](TESTING.md) for the test boundary and cleanup scope.
 
 ## Publishing
 
 This source candidate uses package version `0.6.0`; a future authorized release must use matching GitHub tag `v0.6.0`. The release workflow publishes the package only after its checks pass.
 
-The release workflow follows the existing Pi plugin convention: a published GitHub release triggers checks and npm publishing. It requires a `v<package.version>` tag and runs the native host gate before publishing. Nothing is published by CI on pull requests or ordinary pushes.
+The release workflow follows the existing Pi plugin convention: a published GitHub release triggers checks and npm publishing. It requires a `v<package.version>` tag and runs syntax checks and unit tests before building and publishing the package. Nothing is published by CI on pull requests or ordinary pushes.
 
 For OIDC trusted publishing, configure the npm package's trusted publisher for GitHub owner `matuto-ai`, repo `pi-psst-connector`, workflow **`npm-publish.yml`** (filename only), allowing direct `npm publish`. No `NPM_TOKEN` is embedded or created. Use npm CLI >=11.5.1 with the supported Node version. If the npm package does not yet exist, the owner must complete the first package publication/account setup using npm's supported process before configuring its package settings. That setup is not performed by this repository. If the first manual publication uses `0.1.0`, bump the package version and matching release tag before the next automated publish; npm does not allow republishing the same version.
 
@@ -385,42 +387,6 @@ lock. Reopening the same session retains those records; a different session neve
 adopts them. This storage change does not authorize first enrollment, mint another
 credential on startup, or remove the current pairing-file onboarding requirement.
 
-Developer-only native setup proof (disposable CA/grants; Python3/PTY and OpenSSL):
-
-```sh
-PI_TEST_INSTALL=/path/to/official-pi-1.4.0 \
-PSST_TEST_BROKER_ROOT=/path/to/reviewed-psst \
-node scripts/native-setup-tls.probe.mjs
-```
-
-This opens the actual Pi UI, enters only a synthetic grant through the masked
-component, connects to a real fixture HTTPS broker, and recreates HOME while
-preserving the agent directory. It asserts one credential and two distinct
-sessions without a second setup. No model turn or authenticated user-sandbox
-acceptance is claimed. The broker checkout must include its enrollment TLS fixture.
-
-### Masked-field keyboard regression tests
-
-`npm test` requires Python 3 on Linux for the real POSIX PTY keyboard tests. They use only synthetic input and the pinned official Pi TUI 1.4.0 development dependency. Runtime imports resolve through Pi’s native extension loader; no terminal keyboard mode is changed by the connector itself. Legacy text/paste and Kitty printable input are supported, while control keys use the public host decoder. This does not claim complete xterm `modifyOtherKeys` printable-key support.
-
-## Approval integration verification
-
-`npm run test:approval` requires `PI_TEST_INSTALL` (isolated official Pi1.4.0)
-and `PSST_TEST_SOURCE` (the reviewed broker source containing its TLS fixture).
-It runs the actual CLI in a PTY, real authenticated administrator form approval,
-HTTPS registration/message delivery and automatic native JSONL acceptance. It
-also covers approval while Pi is closed and 30 concurrent official SDK sessions
-sharing one credential without model calls on startup. Synthetic authority only;
-this does not use or verify an owner's production account or model inference.
-
-Set `PI_TEST_CONTAINER_IMAGE` to the image built from
-`test/containers/Containerfile` to execute the two PTY lifecycles in **separate
-removed containers** with only the documented agent directory retained. The
-runner needs Docker (or `PI_TEST_CONTAINER_ENGINE=podman`) and Linux host
-networking so disposable clients can reach the local verified-TLS fixture.
-No image is published, daemon socket mounted, or user's sandbox modified.
-Container execution is a distinct gate, not implied by process-only tests.
-
 ## Migrating to the Psst package name
 
 Version 0.6.0 uses a new npm package and GitHub repository name. Follow the [migration checklist](docs/migration-0.6.0.md) before publication or upgrading an existing installation. Preserve all private Psst state and do not load both old and new sources.
@@ -455,8 +421,8 @@ held. Delivery and tools are rebuilt for that journal. Old pending messages and
 uncertain outgoing operations stay in the old journal and are never copied/replayed.
 A missing selected journal, native-session mismatch, credential error, or uncertain
 storage outcome fails closed. Ordinary same-session inactivity remains resumable.
-The vendored runtime and test broker pin actual Psst commit
-`f32ddc79ec7b812062ed3f6de7b9a0c12a7128f3`. Local/native fixture tests are not acceptance
+The vendored runtime pins Psst commit
+`f32ddc79ec7b812062ed3f6de7b9a0c12a7128f3`. Connector unit tests are not acceptance
 in the user's authenticated agent environment. No data purge or retention activation
 is performed by this connector change.
 ### Prolonged-offline transport notices
@@ -482,38 +448,4 @@ non-capacity-limited broker snapshot can be retired. Uncertain native handoffs
 are preserved and capacity blocks new notices rather than
 replaying uncertain handoffs. Shutdown aborts/drains the notice poll before
 closing storage. Each poll is bounded to 32 pages of at most ten events, with a three-second
-request deadline. Native host qualification is distinct from fixture tests.
-
-
-### Automatic package integrity
-
-`npm test` now builds an npm tarball from the current candidate and assembles the
-unit/integration test harness in a temporary directory around the extracted
-package. The production `src/`, `extensions/`, `vendor/`, package metadata and
-shipped documents come only from that tarball, never from a source overlay.
-Tests therefore exercise the code users install, including broker persistence,
-transport failures, recovery, cleanup and the real PTY input cases.
-
-The gate rejects missing, extra or stale shipped files, mismatched package/lock
-versions, a loaded runtime version or Node range that disagrees with package
-metadata, changed tarballs and artifacts built from different source inputs.
-Negative-control tests deliberately break those conditions and require failure.
-The historical 0.3.1/0.4.0 upgrade packages and pinned broker protocol fixtures are
-intentional compatibility inputs; they are not claims about the current package.
-
-- `npm test -- --output .artifacts` keeps the tarball and its `.evidence.json`
-  containing source commit, working-tree state, source digest, artifact SHA256,
-  shipped-file hashes and suite results.
-- `PI_TEST_EXPECTED_COMMIT=<sha>` requires that exact, clean Git checkout. CI
-  sets it from its event commit, including the tested merge candidate on PRs.
-- Set `PI_TEST_ARTIFACT` to the saved tarball to reuse it with `npm run test:host`,
-  `npm run test:approval` or `npm run test:native`. Each suite revalidates the
-  artifact against current inputs and runs from its extracted production code.
-  Existing native prerequisites still apply; a missing prerequisite fails.
-- CI builds once and saves the evidence. The release workflow publishes that
-  same tested tarball, rather than rebuilding after tests.
-
-Local edits are allowed for development and are explicitly recorded as a working
-tree, never labeled as a clean committed release. These checks establish current
-candidate/source identity, not that arbitrary upstream `latest` dependencies or
-an already installed package elsewhere have been updated.
+request deadline. Unit tests do not establish native host qualification.

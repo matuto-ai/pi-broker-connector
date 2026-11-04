@@ -1,6 +1,0 @@
-node_modules
-.git
-.ci
-*.tgz
-!.artifacts/*.tgz
-**/__pycache__
