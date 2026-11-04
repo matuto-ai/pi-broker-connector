@@ -22,7 +22,8 @@ test('bundled official Pi: native tool roundtrip, same-conversation /resume, dra
  // observations, and opens an actual supported UI prompt. It never delivers mail,
  // calls broker tools, modifies connector state, or substitutes a host API.
  writeFileSync(fixture,`
-import {appendFileSync,writeFileSync} from 'node:fs';
+import {appendFileSync} from 'node:fs';
+import {writeObservation} from ${JSON.stringify(resolve('test/native-observation.mjs'))};
 import {fauxProvider,fauxAssistantMessage,fauxToolCall} from ${JSON.stringify(join(resolve(host),'node_modules/@earendil-works/pi-ai/dist/providers/faux.js'))};
 export default function(pi){
  const log=(event,value={})=>appendFileSync(process.env.FIXTURE_LOG,JSON.stringify({event,...value})+'\\n');
@@ -37,7 +38,7 @@ export default function(pi){
   return fauxAssistantMessage('Fixture model completed.');
  };
  faux.setResponses(Array.from({length:200},()=>answer));pi.registerProvider(faux.provider);
- let ctx;const observe=()=>{if(ctx)writeFileSync(process.env.FIXTURE_STATE,JSON.stringify({session:ctx.sessionManager.getSessionId(),file:ctx.sessionManager.getSessionFile(),draft:ctx.ui.getEditorText(),idle:ctx.isIdle(),calls:faux.state.callCount}));};
+ let ctx;const observe=()=>{if(ctx)writeObservation(process.env.FIXTURE_STATE,{session:ctx.sessionManager.getSessionId(),file:ctx.sessionManager.getSessionFile(),draft:ctx.ui.getEditorText(),idle:ctx.isIdle(),calls:faux.state.callCount});};
  pi.on('session_start',(_e,c)=>{ctx=c;log('session',{id:c.sessionManager.getSessionId()});observe();});
  pi.on('session_switch',(_e,c)=>{ctx=c;log('switch',{id:c.sessionManager.getSessionId()});observe();});
  pi.on('agent_settled',e=>log('settled',{aborted:e.aborted}));

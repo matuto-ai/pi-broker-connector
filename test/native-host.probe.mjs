@@ -19,16 +19,15 @@ const {loadExtensions}=await import(pathToFileURL(join(base,'dist/core/extension
 
 test('official Pi 1.4.0 discovers/loads packed extension and its automatic-only native tools without credentials',async t=>{
   t.after(()=>rmSync(root,{recursive:true,force:true}));
-  const packed=spawnSync('npm',['pack','--ignore-scripts','--json','--pack-destination',root],{cwd:process.cwd(),env:process.env,encoding:'utf8',timeout:30000});
-  assert.equal(packed.status,0,packed.stderr);
-  const manifest=JSON.parse(packed.stdout)[0];
-  assert.equal(manifest.name, '@matuto-ai/pi-psst-connector');
+  const artifact = process.env.PI_TEST_ARTIFACT;
+  assert.ok(artifact, 'Run npm run test:host to build and verify the current package first');
+  const evidence = JSON.parse(readFileSync(`${artifact}.evidence.json`, 'utf8'));
   const packageVersion = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')).version;
-  assert.equal(manifest.version, packageVersion);
-  assert.equal(manifest.filename, `matuto-ai-pi-psst-connector-${packageVersion}.tgz`);
-  assert.ok(!manifest.files.some(f=>f.path.startsWith('test/')||f.path.includes('node_modules')||f.path==='token'));
+  assert.equal(evidence.package.name, '@matuto-ai/pi-psst-connector');
+  assert.equal(evidence.package.version, packageVersion);
+  assert.ok(!Object.keys(evidence.package.files).some(path => path.startsWith('test/') || path.includes('node_modules') || path === 'token'));
   const unpack=join(root,'unpack'); mkdirSync(unpack);
-  const extracted=spawnSync('tar',['-xzf',join(root,manifest.filename),'-C',unpack],{encoding:'utf8'});
+  const extracted=spawnSync('tar',['-xzf',artifact,'-C',unpack],{encoding:'utf8'});
   assert.equal(extracted.status,0,extracted.stderr);
   const packageRoot=join(unpack,'package');
   assert.equal(JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).name, '@matuto-ai/pi-psst-connector');

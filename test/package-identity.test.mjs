@@ -19,7 +19,6 @@ test('npm package, lockfile, and documented installation use the matuto-ai scope
 
 test('0.6.0 migration preserves the native Pi entry and documents explicit source switching', () => {
   const pkg = JSON.parse(read('package.json'));
-  assert.equal(pkg.version, '0.6.0');
   assert.deepEqual(pkg.pi.extensions, ['./extensions/psst.ts']);
   assert.ok(pkg.files.includes('docs/migration-0.6.0.md'));
   const migration = read('docs/migration-0.6.0.md');

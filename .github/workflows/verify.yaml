@@ -7,6 +7,9 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      PI_TEST_EXPECTED_COMMIT: ${{ github.sha }}
+      PI_ACCEPTANCE_DIAGNOSTICS: ${{ github.workspace }}/.artifacts/native-diagnostics
     steps:
       - uses: actions/checkout@v6
       - name: Checkout exact reviewed broker integration fixture
@@ -32,8 +35,10 @@ jobs:
       - run: npm ci --ignore-scripts --legacy-peer-deps
       - name: Check source syntax
         run: npm run check
-      - name: Run local tests
-        run: npm test
+      - name: Build exact candidate and run tests against shipped package
+        run: |
+          npm test -- --output .artifacts
+          echo "PI_TEST_ARTIFACT=$(realpath .artifacts/*.tgz)" >> "$GITHUB_ENV"
       - name: Install pinned official Pi in isolated fixture
         run: npm install --prefix "$RUNNER_TEMP/pi-host" --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.4.0
       - name: Install actual unsupported runtime fixture
@@ -57,5 +62,11 @@ jobs:
           PI_TEST_INSTALL: ${{ runner.temp }}/pi-host
           PSST_TEST_SOURCE: .ci/psst
           PI_TEST_CONTAINER_IMAGE: psst-pi-approval-ci
-      - name: Verify installable package
-        run: npm pack --dry-run --ignore-scripts
+      - name: Preserve tested artifact and source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-tested-package-${{ github.sha }}
+          path: .artifacts/*
+          if-no-files-found: warn
+          include-hidden-files: true
