@@ -393,7 +393,7 @@ test('discovery forwards caller filters and returns client results without rewri
  assert.equal(requests[0].signal.aborted,false);
 });
 
-test('selected cached approval after server revocation requires explicit replacement and retains durable candidate',async t=>{
+for(const command of ['psst-setup','psst-reauthorize'])test(`${command}: selected cached approval after server revocation requires explicit replacement and retains durable candidate`,async t=>{
  const helper=await import('../vendor/broker/reference/approval.mjs');
  const f=fixture(t);f.env.PI_CODING_AGENT_DIR=join(f.home,'native-agent');
  const watches=[];t.mock.method(ApprovalWatch.prototype,'start',function(){watches.push(this);});
@@ -406,10 +406,10 @@ test('selected cached approval after server revocation requires explicit replace
  };
  const client={readApprovalState:helper.readApprovalState,beginApproval:o=>helper.beginApproval(o,{transport}),pollApproval:o=>helper.pollApproval(o,{transport,pollIntervalMs:0})};
  f.ctx.ui.input=async()=> 'https://broker.example';f.ctx.ui.confirm=async()=>{confirms++;return true;};
- let host=f.load({approvalClient:client});await host.commands['psst-setup'].handler('',f.ctx);
+ let host=f.load({approvalClient:client});await host.commands[command].handler('',f.ctx);
  const selected=f.pathStore.snapshot(),intent=f.pathStore.readPending();oldFile=selected.connectionFile;
  const original=readFileSync(oldFile),oldToken=readFileSync(join(oldFile,'..','token'));
- assert.equal(ids.size,1);assert.equal(confirms,0);assert.equal(selected.approvalIntentId,intent.intentId);
+ assert.equal(ids.size,1);assert.equal(confirms,command==='psst-reauthorize'?1:0);confirms=0;assert.equal(selected.approvalIntentId,intent.intentId);
  await host.events.session_shutdown();
  let rejects=0;
  const rejected=()=>{rejects++;throw Object.assign(Error('private server details'),{code:'unauthenticated'});};
@@ -419,11 +419,12 @@ test('selected cached approval after server revocation requires explicit replace
  await host.commands['psst-status'].handler('',f.ctx);assert.match(f.notices.at(-1),/cached_approved.*unauthenticated/s);
  assert.ok(!f.notices.at(-1).includes('private server details'));
  approved=false;uncertain=true;
- await host.commands['psst-setup'].handler('',f.ctx);
+ await host.commands[command].handler('',f.ctx);
  assert.equal(confirms,1);assert.equal(ids.size,2);assert.equal(keys.size,2);
  const candidate=f.pathStore.readPending();
  for(const watch of [...watches])await watch.tick();
  assert.equal(ids.size,2);assert.equal(keys.size,2);assert.equal(posts,3,'retry uses same durable candidate');
+ assert.ok(f.notices.some(text=>text.includes([...ids].at(-1))&&text.includes('administrator approval')));
  assert.deepEqual(f.pathStore.snapshot(),selected);
  await host.commands['psst-status'].handler('',f.ctx);assert.match(f.notices.at(-1),/replacement_pending/);
  await host.events.session_shutdown();
@@ -433,10 +434,24 @@ test('selected cached approval after server revocation requires explicit replace
  for(const watch of [...watches])await watch.tick();
  assert.deepEqual(f.pathStore.snapshot(),selected,'failed candidate attachment preserves predecessor');
  assert.equal(f.pathStore.readPending().intentId,candidate.intentId);
+ await host.commands['psst-status'].handler('',f.ctx);assert.match(f.notices.at(-1),/approved_not_connected/);
  assert.deepEqual(readFileSync(oldFile),original);assert.deepEqual(readFileSync(join(oldFile,'..','token')),oldToken);
  await host.events.session_shutdown();
- host=f.load({approvalClient:client});await host.commands['psst-setup'].handler('',f.ctx);
+ host=f.load({approvalClient:client});await host.commands[command].handler('',f.ctx);
  assert.equal(confirms,1,'approved uncommitted candidate resumes without requesting another replacement');
  assert.equal(ids.size,2);assert.notEqual(f.pathStore.read(),oldFile);
+ await host.events.session_shutdown();
+});
+
+test('reauthorize dispatch uses shared native setup handler, no arguments or model tool',async t=>{
+ const f=fixture(t);f.pathStore.write(f.file,'https://broker.example');let calls=0;
+ const host=f.load({setupUI:async(_ctx,options)=>{calls++;assert.equal(options.reauthorize,true);assert.equal(options.selection.brokerUrl,'https://broker.example');return null;}});
+ assert.match(host.commands['psst-reauthorize'].description,/does not revoke/);
+ assert.equal(host.tools['psst-reauthorize'],undefined);
+ const before=f.pathStore.snapshot();
+ await host.commands['psst-reauthorize'].handler('secret-not-accepted',f.ctx);assert.equal(calls,0);
+ assert.equal(f.notices.some(text=>text.includes('secret-not-accepted')),false);
+ await host.commands['psst-reauthorize'].handler('',f.ctx);assert.equal(calls,1);
+ assert.deepEqual(f.pathStore.snapshot(),before);assert.equal(f.pathStore.readPending(),null);
  await host.events.session_shutdown();
 });
