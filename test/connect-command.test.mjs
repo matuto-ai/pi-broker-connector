@@ -392,3 +392,51 @@ test('discovery forwards caller filters and returns client results without rewri
  assert.deepEqual(requests.map(({signal,...options})=>options),[filters]);
  assert.equal(requests[0].signal.aborted,false);
 });
+
+test('selected cached approval after server revocation requires explicit replacement and retains durable candidate',async t=>{
+ const helper=await import('../vendor/broker/reference/approval.mjs');
+ const f=fixture(t);f.env.PI_CODING_AGENT_DIR=join(f.home,'native-agent');
+ const watches=[];t.mock.method(ApprovalWatch.prototype,'start',function(){watches.push(this);});
+ let approved=true,uncertain=false,confirms=0,posts=0,oldFile;
+ const ids=new Set(),keys=new Set();
+ const transport=async(_origin,method,_path,token,body)=>{
+  if(method==='POST'){posts++;ids.add(body.request_id);keys.add(token);if(uncertain){uncertain=false;throw Object.assign(Error('lost response'),{code:'approval_transport_error',retryable:true,effect:'unknown'});}}
+  const id=body?.request_id||[...ids].at(-1);
+  return {status:201,body:{request_id:id,state:approved?'approved':'pending',request_expires_at:'2099-01-01T00:00:00Z',...(approved?{credential:{protocol_version:'1',client_type:'pi',credential_id:'enrolled-'+id,adapter_id:'installation-'+id,scopes:['messages'],expires_at:'2099-01-01T00:00:00Z'}}:{})}};
+ };
+ const client={readApprovalState:helper.readApprovalState,beginApproval:o=>helper.beginApproval(o,{transport}),pollApproval:o=>helper.pollApproval(o,{transport,pollIntervalMs:0})};
+ f.ctx.ui.input=async()=> 'https://broker.example';f.ctx.ui.confirm=async()=>{confirms++;return true;};
+ let host=f.load({approvalClient:client});await host.commands['psst-setup'].handler('',f.ctx);
+ const selected=f.pathStore.snapshot(),intent=f.pathStore.readPending();oldFile=selected.connectionFile;
+ const original=readFileSync(oldFile),oldToken=readFileSync(join(oldFile,'..','token'));
+ assert.equal(ids.size,1);assert.equal(confirms,0);assert.equal(selected.approvalIntentId,intent.intentId);
+ await host.events.session_shutdown();
+ let rejects=0;
+ const rejected=()=>{rejects++;throw Object.assign(Error('private server details'),{code:'unauthenticated'});};
+ host=f.load({approvalClient:client,createSession:rejected});
+ await host.events.session_start({},f.ctx);assert.equal(rejects,1,'no cached approval reattachment loop');
+ await host.commands['psst-connect'].handler('',f.ctx);assert.equal(posts,1,'restart and reconnect never enroll');
+ await host.commands['psst-status'].handler('',f.ctx);assert.match(f.notices.at(-1),/cached_approved.*unauthenticated/s);
+ assert.ok(!f.notices.at(-1).includes('private server details'));
+ approved=false;uncertain=true;
+ await host.commands['psst-setup'].handler('',f.ctx);
+ assert.equal(confirms,1);assert.equal(ids.size,2);assert.equal(keys.size,2);
+ const candidate=f.pathStore.readPending();
+ for(const watch of [...watches])await watch.tick();
+ assert.equal(ids.size,2);assert.equal(keys.size,2);assert.equal(posts,3,'retry uses same durable candidate');
+ assert.deepEqual(f.pathStore.snapshot(),selected);
+ await host.commands['psst-status'].handler('',f.ctx);assert.match(f.notices.at(-1),/replacement_pending/);
+ await host.events.session_shutdown();
+ host=f.load({approvalClient:client,createSession:rejected});
+ await host.events.session_start({},f.ctx);assert.equal(posts,3);
+ approved=true;
+ for(const watch of [...watches])await watch.tick();
+ assert.deepEqual(f.pathStore.snapshot(),selected,'failed candidate attachment preserves predecessor');
+ assert.equal(f.pathStore.readPending().intentId,candidate.intentId);
+ assert.deepEqual(readFileSync(oldFile),original);assert.deepEqual(readFileSync(join(oldFile,'..','token')),oldToken);
+ await host.events.session_shutdown();
+ host=f.load({approvalClient:client});await host.commands['psst-setup'].handler('',f.ctx);
+ assert.equal(confirms,1,'approved uncommitted candidate resumes without requesting another replacement');
+ assert.equal(ids.size,2);assert.notEqual(f.pathStore.read(),oldFile);
+ await host.events.session_shutdown();
+});

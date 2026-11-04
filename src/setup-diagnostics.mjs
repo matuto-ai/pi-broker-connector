@@ -20,7 +20,7 @@ export function ownershipConversation(ctx) {
 }
 export function setupDiagnostic(error, phase, requestState = 'not_started', ctx) {
   return { code: codes.has(error?.code) ? error.code : 'setup_failed', phase: phases.has(phase) ? phase : 'setup',
-    requestState: ['not_started', 'intent_saved', 'outcome_unknown', 'pending', 'approved'].includes(requestState) ? requestState : 'outcome_unknown',
+    requestState: ['not_started', 'intent_saved', 'outcome_unknown', 'pending', 'approved', 'cached_approved'].includes(requestState) ? requestState : 'outcome_unknown',
     ...(error?.code === 'owner_conflict' && ctx ? {conversation: ownershipConversation(ctx)} : {}) };
 }
 export function diagnosticText(diagnostic) {
@@ -29,7 +29,9 @@ export function diagnosticText(diagnostic) {
     ? `The inbox for ${diagnostic.conversation ?? 'this conversation'} could not acquire exclusive ownership; another active process is not confirmed. Select a different conversation, or close an existing owner normally only after confirming it. Use /psst-doctor for read-only checks; do not delete its lock or inbox or reset credentials.`
     : code === 'broker_origin_mismatch' || (code === 'invalid_configuration' && phase === 'url_validation') || code === 'https_origin_required'
       ? 'Use only the HTTPS broker origin, without a path/query or credentials; check a conflicting PSST_BROKER_URL override.'
-      : 'Use /psst-doctor for read-only path checks. Preserve saved state; do not reset credentials to hide an uncertain result.';
+      : code === 'unauthenticated' || code === 'forbidden' || code === 'credential_expired'
+        ? 'Saved approval is only local history, not current server authorization. Use /psst-setup and explicitly confirm replacement if new access is needed. Preserve credentials and unread messages.'
+        : 'Use /psst-doctor for read-only path checks. Preserve saved state; do not reset credentials to hide an uncertain result.';
   return `Psst setup diagnostic: ${code}; phase=${phase}; request=${requestState}. ${advice}`;
 }
 

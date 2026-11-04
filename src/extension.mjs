@@ -7,7 +7,7 @@ import { setupDiagnostic, diagnosticText, inspectPsstStorage, doctorText } from 
 import { toolOperationContext } from './tool-operation.mjs';
 import {storageLayout} from './storage.mjs';
 import {ApprovalWatch} from './approval-watch.mjs';
-import {nativeSetup,brokerOrigin} from './native-setup.mjs';
+import {nativeSetup,brokerOrigin,isSelectedApproval} from './native-setup.mjs';
 import { resolveConnectionFile } from './connect-config.mjs';
 import { NativeDelivery, CUSTOM_TYPE } from './native-delivery.mjs';
 import { renderPsstMessage, renderPresenceNotice } from './message-renderer.mjs';
@@ -118,7 +118,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       clearInterval(presenceTimer); presenceTimer=null; await presence?.stop(); presence=null;
       const prior = owner; owner = null; facade = null; ready = false;
       if (prior) await prior.close();
-      reportSetupFailure(ctx,error,attachmentActive?'approved_attachment':'connection_start',attachmentActive?'approved':'not_started');
+      reportSetupFailure(ctx,error,attachmentActive?'approved_attachment':'connection_start',attachmentActive?'cached_approved':'not_started');
       setStatus(ctx);
     }
   };
@@ -136,11 +136,12 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
         pending={...pending,requestId:result.requestId};
         if(pathStore.writePending(pending,pending.intentId)===false)throw new LocalError('selection_changed');
       }
-      if(result.state==='pending'){approvalStatus='pending';setStatus(ctx);return;}
+      if(result.state==='pending'){approvalStatus=pending.replaceRequestId?'replacement_pending':'pending';setStatus(ctx);return;}
       if(result.state!=='approved'){
         approvalStatus=result.state;setStatus(ctx);
         notify(ctx,`Psst authorization ${result.state}. Existing selection is unchanged; use /psst-setup to request a replacement.`, 'warning');return;
       }
+      approvalStatus='cached_approved';setStatus(ctx);
       const path=result.connectionFile,config=configReader(env,path);
       if(new URL(config.url).origin!==pending.brokerUrl)throw new LocalError('broker_origin_mismatch');
       const sameWinner=selection=>selection?.approvalRequestId===result.requestId&&selection.approvalIntentId===pending.intentId&&selection.brokerUrl===pending.brokerUrl&&selection.connectionFile===path;
@@ -168,7 +169,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
     if(!result){notify(ctx,'Psst setup was interrupted before a request was saved. Use /psst-setup to continue.','warning');return;}
     await accept(result);
     if(result.state==='pending'&&stillCurrent()){
-      notify(ctx,`Psst authorization pending administrator approval (${result.requestId}). Existing connections are unchanged.`);
+      notify(ctx,`Psst authorization pending administrator approval (${result.requestId}). Previous credentials and unread messages are preserved; previous access is not guaranteed.`);
       approvalWatch=new ApprovalWatch({poll:()=>approvalClient.pollApproval(options),isCurrent:stillCurrent,onState:accept,
         onError:error=>{
           if(error?.retryable!==true){approvalWatch?.stop();approvalStatus='check_stopped';setStatus(ctx);reportSetupFailure(ctx,error,'approval_poll','pending');}
@@ -179,7 +180,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
   pi.on('session_start', async (_event, ctx) => {
     const task=schedule(epoch => connect(ctx, epoch)),expected=generation;await task;
     if(generation!==expected)return;
-    try{const pending=pathStore.readPending?.();if(pending&&status!=='disconnected'&&!pathStore.isDisconnected?.(ctx.sessionManager.getSessionId())&&!env.PSST_CONFIG_FILE&&!env.PSST_CONFIG){const selected=pathStore.snapshot?.();if(!(ready&&selected?.approvalIntentId===pending.intentId&&selected.approvalRequestId===pending.requestId))await followApproval(ctx,pending);}}
+    try{const pending=pathStore.readPending?.();if(pending&&status!=='disconnected'&&!pathStore.isDisconnected?.(ctx.sessionManager.getSessionId())&&!env.PSST_CONFIG_FILE&&!env.PSST_CONFIG){const selected=pathStore.snapshot?.();if(isSelectedApproval(selected,pending.brokerUrl,pending.requestId)){approvalStatus='cached_approved';setStatus(ctx);}else await followApproval(ctx,pending);}}
     catch(error){reportSetupFailure(ctx,error,'approval_state_read','outcome_unknown');}
   });
   pi.on('session_shutdown', async () => schedule(async () => { await stop(); status = 'stopped'; }));
@@ -197,9 +198,9 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       lastSetupDiagnostic=null;
       const onPhase=value=>{phase=value;if(value==='enrollment_request')requestState='outcome_unknown';};
       try {
-        const revision=pathStore.snapshot?.().revision;
+        const selection=pathStore.snapshot?.(),revision=selection?.revision;
         const previousPending=pathStore.readPending?.();
-        const selected=await setupUI(ctx,{env,approvalClient,resumeRequest:previousPending,stillCurrent,onPhase,beforeBegin:options=>{
+        const selected=await setupUI(ctx,{env,approvalClient,resumeRequest:previousPending,selection,stillCurrent,onPhase,beforeBegin:options=>{
           phase='selection_write';
           if(!stillCurrent())throw new LocalError('session_mismatch');
           setupOptions={...options};
@@ -291,6 +292,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       // and the loaded version in one visible message.
       await refreshMetadata(ctx);
       const lines = [runtimeDescription()];
+      try { if(pathStore.snapshot?.()?.approvalRequestId)lines.push('Saved authorization: cached_approved (local history, not current server access).'); } catch { /* Existing diagnostics report invalid selection without exposing paths. */ }
       if (delivery?.humanPaused) lines.push('Psst automatic delivery is paused after an aborted turn. Pending messages are preserved; send your next input or use /psst-connect to resume.');
       if (lastSetupDiagnostic) lines.push(diagnosticText(lastSetupDiagnostic));
       if (ready && owner) lines.push(`${metadataSummary(owner.metadata)}; metadata ${owner.metadataSync}.`);
