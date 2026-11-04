@@ -15,6 +15,16 @@ jobs:
           repository: matuto-ai/psst
           ref: f32ddc79ec7b812062ed3f6de7b9a0c12a7128f3
           path: .ci/psst
+      - name: Checkout historical installed packages for upgrade acceptance
+        uses: actions/checkout@v6
+        with:
+          ref: 4aac47710a20f0a2768081bf67ced133473105a1
+          path: .ci/pi-0.3.1
+      - name: Checkout URL-only upgrade target
+        uses: actions/checkout@v6
+        with:
+          ref: f3d3bfc5cd17c10697d52e892f88c06a22ee2b16
+          path: .ci/pi-0.4.0
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -26,13 +36,19 @@ jobs:
         run: npm test
       - name: Install pinned official Pi in isolated fixture
         run: npm install --prefix "$RUNNER_TEMP/pi-host" --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.4.0
+      - name: Install actual unsupported runtime fixture
+        run: npm install --prefix "$RUNNER_TEMP/pi-node22" --no-audit --no-fund node@22.22.2
       - name: Verify native host and protocol integration
         run: |
           npm run test:host
           npm run test:approval
+          npm run test:native
         env:
           PI_TEST_INSTALL: ${{ runner.temp }}/pi-host
           PSST_TEST_SOURCE: .ci/psst
+          PI_TEST_OLD_SOURCE: .ci/pi-0.3.1
+          PI_TEST_URL_SOURCE: .ci/pi-0.4.0
+          PI_TEST_UNSUPPORTED_NODE: ${{ runner.temp }}/pi-node22/node_modules/node/bin/node
       - name: Build disposable native Pi test container
         run: docker build -f test/containers/Containerfile -t psst-pi-approval-ci .
       - name: Verify container persistence

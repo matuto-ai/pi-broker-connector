@@ -19,7 +19,7 @@ function fixture(t) {
  const ctx={hasUI:true,sessionManager:{getSessionId:()=>sessionId},ui:{setStatus(){},notify:text=>notices.push(text)}};
  const createSession=options=>{const session=new PiBrokerSession(options),close=session.close.bind(session);let started=false;
  session.start=async()=>{started=true;active++;peak=Math.max(peak,active);};session.close=async()=>{if(started){active--;started=false;}await close();};instances.push(session);return session;};
- const load=(overrides={})=>{const events={},commands={},tools={};const Type={Object:()=>({}),String:()=>({}),Optional:()=>({}),Integer:()=>({})};
+ const load=(overrides={})=>{const events={},commands={},tools={};const Type={Object:()=>({}),String:()=>({}),Optional:()=>({}),Boolean:()=>({}),Integer:()=>({})};
  installExtension({on:(n,f)=>events[n]=f,registerCommand:(n,c)=>commands[n]=c,registerTool:t=>tools[t.name]=t},Type,{pathStore,env,createSession,...overrides});return {events,commands,tools};};
  return {home,file,pathStore,env,ctx,load,instances,notices,setSession:id=>sessionId=id,get active(){return active;},get peak(){return peak;}};
 }
@@ -354,4 +354,25 @@ test('abort while resolving an explicit connection file wins over earlier resume
  await host.events.agent_settled({aborted:true},f.ctx);release();await connecting;
  assert.equal(f.instances.at(-1).inbox.db.prepare("SELECT value FROM pi_delivery_settings WHERE key='human_paused'").get()?.value,'true');
  await host.events.session_shutdown();
+});
+
+test('ownership diagnostic names the local conversation without guessing an owner and normal release resumes its inbox',async t=>{
+ const f=fixture(t);f.ctx.sessionManager.getSessionName=()=> 'Review\n\x1b[31m\u202eyes';
+ const first=f.load();await first.commands['psst-connect'].handler(f.file,f.ctx);const id=f.instances.at(-1).inbox.identity.client_id;
+ const second=f.load();t.after(()=>second.events.session_shutdown());t.after(()=>first.events.session_shutdown());
+ await second.events.session_start({},f.ctx);
+ const diagnostic=f.notices.at(-1);assert.match(diagnostic,/owner_conflict.*phase=/);
+ assert.match(diagnostic,/Review/);assert.match(diagnostic,/\[[a-f0-9]{8}\]/);assert.match(diagnostic,/another active process is not confirmed/);assert.match(diagnostic,/only after confirming/);
+ assert.doesNotMatch(diagnostic,/[\x00-\x1f\x7f-\x9f\u202e]/);assert.equal(diagnostic.includes(f.home),false);assert.equal(f.active,1);
+ f.notices.length=0;await second.commands['psst-status'].handler('',f.ctx);assert.ok(f.notices.some(n=>n.includes(diagnostic)));
+ await first.events.session_shutdown();await second.events.session_start({},f.ctx);assert.equal(f.active,1);assert.equal(f.instances.at(-1).inbox.identity.client_id,id);assert.equal(f.pathStore.read(),f.file);
+});
+
+// A real Pi TUI coalesces successive notify calls. This command must be atomic.
+test('status and doctor each emit one complete visible runtime report',async t=>{
+ const f=fixture(t),host=f.load();
+ f.notices.length=0;await host.commands['psst-status'].handler('',f.ctx);
+ assert.equal(f.notices.length,1);assert.match(f.notices[0],/Psst connector .*Node .*Psst /s);
+ f.notices.length=0;await host.commands['psst-doctor'].handler('',f.ctx);
+ assert.equal(f.notices.length,1);assert.match(f.notices[0],/Psst connector .*selection_directory/s);
 });

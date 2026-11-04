@@ -1,3 +1,4 @@
+import { connectPairingFile } from '../vendor/broker/reference/enrollment.mjs';
 import { LocalError } from '../vendor/broker/reference/errors.mjs';
 import { storageLayout } from './storage.mjs';
 import { resolve, join } from 'node:path';
@@ -9,7 +10,7 @@ import { validateConfigPath } from './config-path.mjs';
 // Only explicit /psst-connect invokes pairing. Loading a remembered bundle never
 // creates credentials or exchanges pairing secrets in the background.
 export async function resolveConnectionFile(file, { env = process.env,
-  pairingConnector = async options => (await import('../vendor/broker/reference/enrollment.mjs')).connectPairingFile(options),
+  pairingConnector = connectPairingFile,
 } = {}) {
   validateConfigPath(file);
   const raw = readPrivateJson(file);

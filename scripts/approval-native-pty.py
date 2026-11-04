@@ -21,7 +21,7 @@ def cycle(first):
    '--mount','type=bind,src='+control['cert']+',dst=/fixture-ca.pem,readonly',
    '--env','HOME=/tmp/pi-home','--env','PI_CODING_AGENT_DIR=/persistent-agent','--env','PI_OFFLINE=1','--env','TERM=xterm-256color','--env','NODE_EXTRA_CA_CERTS=/fixture-ca.pem',
    '--entrypoint','/bin/sh',control['containerImage'],'-c','mkdir -p /tmp/pi-home; cd /tmp/pi-home; exec "$@"','--',
-   'node','/opt/pi-host/node_modules/@earendil-works/pi-coding-agent/dist/cli.js',*args[2:-1],'/connector/extensions/psst.ts']
+   'node','/opt/pi-host/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js',*args[2:-1],'/connector/extensions/psst.ts']
  proc=subprocess.Popen(args,stdin=slave,stdout=slave,stderr=slave,env=env,cwd=home,start_new_session=True);os.close(slave);output=b''
  def read(seconds=.1):
   nonlocal output
