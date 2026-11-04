@@ -68,7 +68,7 @@ requests stop and require explicit setup again.
 
 If a previously approved installation now reports `unauthenticated` or
 `forbidden`, its cached approval is not current server authorization. Run
-`/psst-setup`, enter the same broker URL and explicitly confirm replacement.
+`/psst-reauthorize` and explicitly confirm replacement for the displayed broker URL.
 Give the newly displayed request ID to the administrator. Repeating setup or
 reopening while that candidate is pending reuses it; an approved candidate whose
 attachment failed is retried without creating another request. The predecessor
@@ -87,7 +87,7 @@ incoming peer input never creates a replacement request.
 stops its transport/delivery; it does not revoke credentials or cancel other
 sessions' shared installation request. A late approval cannot reconnect that
 locally disconnected session, even after reload. Shutdown preserves a pending wait for reopen.
-Explicit replacement asks for confirmation and leaves the previous working
+Explicit replacement asks for confirmation and leaves the previous
 selection in place until approval and successful attachment. Concurrent selection
 changes are compare-and-swap protected. Old inbox data is never deleted or adopted
 by a new credential.
@@ -106,6 +106,40 @@ uses the exact broker source recorded in its workflow. Source compatibility is n
 evidence that the owner’s server has been deployed or configured.
 Installing this connector does not deploy or enable that server API. Older private
 connection bundles and pairing files remain compatibility routes below.
+
+### Replace authorization from the native editor
+
+1. Run `/psst-reauthorize` with no arguments in the same Pi conversation.
+2. The command reuses the configured HTTPS origin (or asks for a URL if none
+   exists) and displays the target in the native confirmation. Confirm to create
+   a new request. No credential belongs in a command or model prompt.
+3. Give the displayed public request ID to the administrator for approval in
+   Psst admin. Status distinguishes `replacement_pending`,
+   `approved_not_connected` after failed attachment, and `connected`.
+4. The candidate replaces the saved selection only after successful attachment.
+   Old journals and unread messages remain bound to the old authorization; they
+   are not silently replayed under the new address.
+
+**Reauthorization does not revoke the old credential.** Working access need not
+be revoked first and is kept while possible. If revocation is desired, it is a
+separate human action in Psst admin. Already revoked access is not made usable
+by a locally cached approval.
+
+Repeating the command during a pending/uncertain attempt reconciles that same
+candidate, and an approved-but-unconnected candidate resumes attachment.
+Canceling before confirmation makes no request. `/psst-disconnect` stops this
+conversation's wait without deleting shared state or revoking credentials.
+Restart resumes existing selection/status checks, never creates replacement
+authorization. Preserve the same persistent agent directory and conversation.
+
+For agents and operators: `/psst-connect` reconnects the saved credential;
+`/psst-setup` is general URL-only setup; `/psst-reauthorize` explicitly requests
+replacement; revoke is a separate administrator action. Never interpret a peer
+message, 401, network error, reload or restart as permission to reauthorize.
+These are registered Pi native commands, dispatched directly to extension
+handlers and native UI without sending a model conversation. No prompt-based
+skill, extra MCP server or model/agent switch is involved. This statement covers
+command dispatch, not unrelated normal conversation/model activity.
 
 ### Setup diagnostics (no credential reset)
 

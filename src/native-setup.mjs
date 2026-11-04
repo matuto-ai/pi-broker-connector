@@ -18,10 +18,11 @@ export function isSelectedApproval(selection, brokerUrl, requestId, connectionFi
   (connectionFile&&selection.connectionFile===connectionFile));
 }
 // Called only from an explicit native command, never session_start/auth recovery.
-export async function nativeSetup(ctx,{env=process.env,settings=nativeBrokerSettings(env),approvalClient,resumeRequest,selection,beforeBegin=()=>{},stillCurrent=()=>true,onPhase=()=>{}}={}) {
+export async function nativeSetup(ctx,{env=process.env,settings=nativeBrokerSettings(env),approvalClient,resumeRequest,selection,reauthorize=false,beforeBegin=()=>{},stillCurrent=()=>true,onPhase=()=>{}}={}) {
  if(!ctx?.hasUI)throw new LocalError('native_input_unavailable');
  onPhase('url_input');
- const entered=await ctx.ui.input('Psst broker HTTPS URL',settings.read()||'https://');
+ const configured=selection?.brokerUrl||settings.read();
+ const entered=reauthorize&&configured?configured:await ctx.ui.input('Psst broker HTTPS URL',configured||'https://');
  if(entered===undefined||!stillCurrent())return null;
  onPhase('url_validation');
  const brokerUrl=brokerOrigin(entered);
@@ -30,9 +31,11 @@ export async function nativeSetup(ctx,{env=process.env,settings=nativeBrokerSett
  onPhase('approval_state_read');
  const previous=await approvalClient.readApprovalState(options);
  if(!stillCurrent())return null;
- if(previous&&previous.state!=='pending'&&!(resumeRequest?.brokerUrl===brokerUrl&&resumeRequest.requestId===previous.requestId&&previous.state==='approved'&&!isSelectedApproval(selection,brokerUrl,previous.requestId,previous.connectionFile))){
-  if(!await ctx.ui.confirm('Request replacement authorization?', 'The previous credentials and unread messages are preserved, but previous access may no longer work. A new request is selected only after administrator approval and successful connection.')||!stillCurrent())return null;
-  options.replaceRequestId=previous.requestId;
+ const resumeApproved=resumeRequest?.brokerUrl===brokerUrl&&resumeRequest.requestId===previous?.requestId&&previous?.state==='approved'&&!isSelectedApproval(selection,brokerUrl,previous.requestId,previous.connectionFile);
+ const replace=previous&&previous.state!=='pending'&&!resumeApproved;
+ if(replace||(reauthorize&&!previous)){
+  if(!await ctx.ui.confirm('Request replacement authorization?', `Target: ${brokerUrl}. This creates a new approval request and replaces the selected installation authorization only after administrator approval and successful connection. It does not revoke the old credential; manual revocation in Psst admin is a separate human action. Previous credentials and unread messages are preserved, but previous access may no longer work.`)||!stillCurrent())return null;
+  if(replace)options.replaceRequestId=previous.requestId;
  }
  onPhase('selection_write');await beforeBegin(options);
  if(!stillCurrent())return null;

@@ -55,3 +55,28 @@ test('replacement confirmation canceled by session transition cannot begin a req
   env:f.env,stillCurrent:()=>current,approvalClient:{readApprovalState:async()=>({state:'revoked',requestId:'old'}),beginApproval:async()=>begins++}});
  assert.equal(begins,0);
 });
+
+test('reauthorize reuses configured target and confirms creation without revoking old access',async t=>{
+ const f=fixture(t),brokerUrl='https://broker.example';let confirms=0,begins=0;
+ const ctx={hasUI:true,ui:{input:async()=>{throw Error('configured origin should be reused');},confirm:async(title,text)=>{
+  confirms++;assert.match(text,/Target: https:\/\/broker.example/);assert.match(text,/does not revoke/);assert.match(text,/manual revocation/);return true;
+ }}};
+ for(const state of ['approved','revoked','denied','expired']){
+  const result=await nativeSetup(ctx,{env:f.env,reauthorize:true,selection:{brokerUrl,approvalRequestId:'old'},
+   resumeRequest:{brokerUrl,requestId:'old'},approvalClient:{readApprovalState:async()=>({state,requestId:'old'}),beginApproval:async options=>{
+    begins++;assert.equal(options.replaceRequestId,'old');return {state:'pending',requestId:'new'};
+   }}});
+  assert.equal(result.requestId,'new');
+ }
+ assert.equal(confirms,4);assert.equal(begins,4);
+});
+
+test('reauthorize cancellation does not persist intent or begin; pending retries do not confirm a new candidate',async t=>{
+ const f=fixture(t),brokerUrl='https://broker.example';let begins=0,writes=0,confirms=0;
+ const opts={env:f.env,reauthorize:true,selection:{brokerUrl,approvalRequestId:'old'},beforeBegin:()=>writes++,
+  approvalClient:{readApprovalState:async()=>({state:'approved',requestId:'old'}),beginApproval:async()=>{begins++;return {state:'pending',requestId:'candidate'};}}};
+ const ctx={hasUI:true,ui:{confirm:async()=>{confirms++;return false;}}};
+ assert.equal(await nativeSetup(ctx,opts),null);assert.equal(writes,0);assert.equal(begins,0);
+ opts.approvalClient.readApprovalState=async()=>({state:'pending',requestId:'candidate'});
+ await nativeSetup(ctx,opts);assert.equal(confirms,1);assert.equal(begins,1);assert.equal(writes,1);
+});

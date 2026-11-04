@@ -159,9 +159,11 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       }
       if(!ready){
         if(previous)await schedule(epoch=>connect(ctx,epoch,previous,true,{preserveHumanPause}));
+        approvalStatus='approved_not_connected';setStatus(ctx);
         notify(ctx, [lastSetupDiagnostic && diagnosticText(lastSetupDiagnostic), 'Psst approved connection could not attach. Previous selection is unchanged; retry /psst-setup.'].filter(Boolean).join('\n'), 'warning');return;
       }
       const saved=sameWinner(pathStore.snapshot?.())?true:pathStore.write(path,pending.brokerUrl,pending.selectionRevision,{requestId:result.requestId,intentId:pending.intentId});
+      lastSetupDiagnostic=null;
       notify(ctx,saved===false?'Psst connected for this session. Another setup changed the saved selection; future-session selection was not overwritten.':'Psst installation connected. Future native sessions use the saved credential.');
       } finally {attachmentActive=false;}
     };
@@ -186,11 +188,13 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
   pi.on('session_shutdown', async () => schedule(async () => { await stop(); status = 'stopped'; }));
   pi.on('session_info_changed', async (_event, ctx) => refreshMetadata(ctx));
   pi.on('model_select', async (_event, ctx) => refreshMetadata(ctx));
-  pi.registerCommand('psst-setup', {
-    description: 'Request administrator approval using only the broker URL',
+  for(const command of ['psst-setup','psst-reauthorize']) {
+  const reauthorize=command==='psst-reauthorize';
+  pi.registerCommand(command, {
+    description: reauthorize?'Request replacement Psst authorization; does not revoke old credentials':'Request administrator approval using only the broker URL',
     handler: async (args, ctx) => {
       if(attachmentActive){notify(ctx,'Psst is attaching an approved connection. Wait for that transition before starting another setup.','warning');return;}
-      if(args.trim()){notify(ctx,'Use /psst-setup without arguments. Enter only the URL in the native form.','warning');return;}
+      if(args.trim()){notify(ctx,`Use /${command} without arguments. Enter only the URL in the native form.`,'warning');return;}
       cancelSetup();
       const attempt=setupGeneration,initial=generation,nativeId=ctx.sessionManager.getSessionId();
       const stillCurrent=()=>attempt===setupGeneration&&initial===generation&&ctx.sessionManager.getSessionId()===nativeId;
@@ -200,7 +204,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       try {
         const selection=pathStore.snapshot?.(),revision=selection?.revision;
         const previousPending=pathStore.readPending?.();
-        const selected=await setupUI(ctx,{env,approvalClient,resumeRequest:previousPending,selection,stillCurrent,onPhase,beforeBegin:options=>{
+        const selected=await setupUI(ctx,{env,approvalClient,resumeRequest:previousPending,selection,reauthorize,stillCurrent,onPhase,beforeBegin:options=>{
           phase='selection_write';
           if(!stillCurrent())throw new LocalError('session_mismatch');
           setupOptions={...options};
@@ -228,6 +232,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       }
     },
   });
+  }
   pi.registerCommand('psst-connect', {
     description: 'Reconnect this Pi conversation using its saved credential; an absolute file is compatibility-only',
     handler: async (args, ctx) => {
@@ -261,7 +266,8 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
         if(!ready||generation!==expected||ctx.sessionManager.getSessionId()!==sessionBeforePairing)return;
         const saved=pathStore.write(path,new URL(config.url).origin,revision);
         if (env.PSST_CONFIG_FILE || env.PSST_CONFIG) notify(ctx, 'An existing PSST_CONFIG_FILE/PSST_CONFIG environment setting still takes precedence after /reload.', 'warning');
-        notify(ctx,saved===false?'Psst connected for this session. Another setup changed the saved selection; future-session selection was not overwritten.':'Psst connected. Selection saved; no restart needed.');
+        lastSetupDiagnostic=null;
+      notify(ctx,saved===false?'Psst connected for this session. Another setup changed the saved selection; future-session selection was not overwritten.':'Psst connected. Selection saved; no restart needed.');
       } catch (error) { notify(ctx, `Psst could not save configuration (${safeError(error).error?.code || 'invalid_configuration'}). Use /psst-connect /absolute/path/connection.json.`, 'warning'); }
     },
   });
