@@ -40,3 +40,4 @@ jobs:
           name: pi-release-package-${{ github.sha }}
           path: .artifacts/*
           if-no-files-found: warn
+          include-hidden-files: true

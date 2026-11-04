@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PI_TEST_EXPECTED_COMMIT: ${{ github.sha }}
+      PI_ACCEPTANCE_DIAGNOSTICS: ${{ github.workspace }}/.artifacts/native-diagnostics
     steps:
       - uses: actions/checkout@v6
       - name: Checkout exact reviewed broker integration fixture
@@ -68,3 +69,4 @@ jobs:
           name: pi-tested-package-${{ github.sha }}
           path: .artifacts/*
           if-no-files-found: warn
+          include-hidden-files: true
