@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 — unreleased source candidate
+
+- Prepare version metadata for the merged source changes only; no release or npm publication is performed.
+- Recover selected cached authorization safely and add the explicit native `/psst-reauthorize` command, preserving prior credentials and journals.
 
 - Resolve shared project labels with bounded local configuration and hide provider in readable presentation without changing model provenance.
 - Add explicitly opted-in registration v2 native-incarnation recovery. Expired identity replacement starts an empty journal and preserves old uncertain work separately. Default v1 behavior and broker enforcement remain unchanged.

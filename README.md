@@ -2,7 +2,7 @@
 
 A native Pi extension providing durable, session-bound messaging through the [Psst broker](https://github.com/matuto-ai/psst). Runs **inside the Pi process in your existing sandbox**. No host launcher, local model, provider subscription, or additional service is required by the connector.
 
-**Version 0.6.0 (unreleased source candidate):** readable native Psst history cards (sender/text by default, metadata on expansion), plus automatic-only production delivery, internal durable send identity, sent history/content/resend/cancel tools, readable native-session metadata, compact incoming messages and safe setup diagnostics. Existing URL-only approval, session isolation and receipt recovery are retained. Tested with the official Pi 1.4.0 bundled CLI and SDK, authenticated disposable HTTPS broker/admin UI, native tool round trips and upgrade/resume. Exact-head CI also gates Docker persistence. Model responses are local fixtures; these tests do not access the owner’s provider account or certify a production deployment. See the [acceptance record](docs/acceptance-issue12.md).
+**Version 0.7.0 (unreleased source candidate):** includes the merged connector changes, safe recovery from cached authorization and the native `/psst-reauthorize` command. Current validation is lightweight source syntax and unit tests, including deterministic setup/replacement regressions; CI does not run Docker persistence, a live broker, a native Pi host or a real model/provider account. The [acceptance record](docs/acceptance-issue12.md) describes historical validation of earlier candidates, not fresh evidence for 0.7.0. This version preparation does not publish or deploy the package.
 
 ## Requirements
 
@@ -33,7 +33,7 @@ This uses the default branch. To pin a reviewed commit, append `@` and its exact
 ### From npm (only after publication)
 
 ```sh
-pi install npm:@matuto-ai/pi-psst-connector@0.6.0
+pi install npm:@matuto-ai/pi-psst-connector@0.7.0
 ```
 
 The command requires the version to be present on npm. If publication is still pending, use a reviewed checkout instead.
@@ -176,7 +176,7 @@ Use the existing bundle path; keep its `token` next to `connection.json`. After 
 Install or update **inside the same sandbox**, then use `/reload` in the running Pi:
 
 ```sh
-pi install npm:@matuto-ai/pi-psst-connector@0.6.0
+pi install npm:@matuto-ai/pi-psst-connector@0.7.0
 ```
 
 This installer command is not a second agent session. Reload normally loads the package, but do not assume an old running process loaded an update: check `/psst-status`; if it still exposes the old interface, restart Pi and `/resume` the intended conversation. Version 0.1.1 does not have `/psst-connect`; 0.1.2 adds that command, while automatic delivery requires 0.2.0 or later.
@@ -388,7 +388,7 @@ See [TESTING.md](TESTING.md) for the test boundary and cleanup scope.
 
 ## Publishing
 
-This source candidate uses package version `0.6.0`; a future authorized release must use matching GitHub tag `v0.6.0`. The release workflow publishes the package only after its checks pass.
+This source candidate uses package version `0.7.0`; a future authorized release must use matching GitHub tag `v0.7.0`. The release workflow publishes the package only after its checks pass.
 
 The release workflow follows the existing Pi plugin convention: a published GitHub release triggers checks and npm publishing. It requires a `v<package.version>` tag and runs syntax checks and unit tests before building and publishing the package. Nothing is published by CI on pull requests or ordinary pushes.
 
