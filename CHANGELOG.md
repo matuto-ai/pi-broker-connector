@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.0 — unreleased source candidate
+
+- Add consistent bounded peer-collaboration guidance in the Pi host prompt, send tool and help: reuse authenticated routing and existing human authorization, while preserving scope/security checks and uncertain-send recovery.
+- Keep slash commands direct, including unsupported-runtime diagnostics for reauthorization and disconnect. No automatic reply loop or persisted-envelope change.
+
 ## 0.7.0 — unreleased source candidate
 
 - Prepare version metadata for the merged source changes only; no release or npm publication is performed.
