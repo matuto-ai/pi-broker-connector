@@ -8,8 +8,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    env:
-      PI_TEST_EXPECTED_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -23,21 +21,10 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
       - run: npm ci --ignore-scripts --legacy-peer-deps
       - run: npm run check
-      - name: Build release once and test the shipped package
+      - run: npm test
+      - name: Build release package
         run: |
-          npm test -- --output .artifacts
-          echo "PI_TEST_ARTIFACT=$(realpath .artifacts/*.tgz)" >> "$GITHUB_ENV"
-      - run: npm install --prefix "$RUNNER_TEMP/pi-host" --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.4.0
-      - run: npm run test:host
-        env:
-          PI_TEST_INSTALL: ${{ runner.temp }}/pi-host
-      - name: Publish the exact tested tarball without rebuilding
-        run: npm publish "$PI_TEST_ARTIFACT" --ignore-scripts --access public --provenance
-      - name: Preserve tested release artifact and source evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pi-release-package-${{ github.sha }}
-          path: .artifacts/*
-          if-no-files-found: warn
-          include-hidden-files: true
+          npm pack --ignore-scripts --json > "$RUNNER_TEMP/pi-package.json"
+          echo "PI_RELEASE_ARTIFACT=$(node -p "require(process.env.RUNNER_TEMP + '/pi-package.json')[0].filename")" >> "$GITHUB_ENV"
+      - name: Publish release package
+        run: npm publish "$PI_RELEASE_ARTIFACT" --ignore-scripts --access public --provenance

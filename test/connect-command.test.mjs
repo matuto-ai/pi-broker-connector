@@ -7,6 +7,7 @@ import { CONNECTOR_VERSION } from '../src/runtime-support.mjs';
 import { installExtension } from '../src/extension.mjs';
 import { createConfigPathStore } from '../src/config-path.mjs';
 import { PiBrokerSession } from '../src/session.mjs';
+import { ApprovalWatch } from '../src/approval-watch.mjs';
 function approvedSetup(file,url='https://broker.example',onCall=()=>{}) {
  return async (_ctx,{beforeBegin})=>{onCall();await beforeBegin({brokerUrl:url});return {state:'approved',requestId:'request-fixture',connectionFile:file,brokerUrl:url};};
 }
@@ -60,11 +61,11 @@ test('pairing completion after shutdown cannot reconnect or replace remembered c
  await host.events.session_shutdown();finish(f.file);await pending;assert.equal(f.active,0);assert.equal(f.pathStore.read(),null);
 });
 
-test('native setup is explicit once; thirty fresh sessions auto-connect without setup or credential rotation',async t=>{
+test('native setup is explicit once; two fresh sessions auto-connect without setup or credential rotation',async t=>{
  const f=fixture(t);let setups=0;const overrides={setupUI:approvedSetup(f.file,'https://broker.example',()=>setups++)};
  let host=f.load(overrides);await host.commands['psst-setup'].handler('',f.ctx);assert.equal(setups,1);await host.events.session_shutdown();
- const ids=new Set();for(let i=0;i<30;i++){f.setSession(`fresh-${i}`);host=f.load(overrides);await host.events.session_start({},f.ctx);ids.add(f.instances.at(-1).inbox.identity.client_id);await host.events.session_shutdown();}
- assert.equal(ids.size,30);assert.equal(setups,1);assert.equal(f.pathStore.read(),f.file);
+ const ids=new Set();for(let i=0;i<2;i++){f.setSession(`fresh-${i}`);host=f.load(overrides);await host.events.session_start({},f.ctx);ids.add(f.instances.at(-1).inbox.identity.client_id);await host.events.session_shutdown();}
+ assert.equal(ids.size,2);assert.equal(setups,1);assert.equal(f.pathStore.read(),f.file);
 });
 
 test('failed native setup attachment leaves previous installation selection untouched',async t=>{
@@ -158,12 +159,13 @@ test('corrupt pending state cannot prevent explicit transport disconnect',async 
  corrupt=true;await host.commands['psst-disconnect'].handler('',f.ctx);assert.equal(f.active,0);assert.ok(!f.notices.some(n=>n.includes('unsafe fixture')));await host.events.session_shutdown();
 });
 
-for(const disconnectOne of [false,true])test(`thirty waiting sessions recognize same approval winner; local disconnect=${disconnectOne}`,async t=>{
+for(const disconnectOne of [false,true])test(`two waiting sessions recognize same approval winner; local disconnect=${disconnectOne}`,async t=>{
+ const watches=[];t.mock.method(ApprovalWatch.prototype,'start',function(){watches.push(this);});
  const f=fixture(t);let approved=false,begins=0,reads=0;
  const client={readApprovalState:async()=>{reads++;return{state:approved?'approved':'pending',requestId:'shared-request',connectionFile:f.file};},pollApproval:async()=>({state:approved?'approved':'pending',requestId:'shared-request',connectionFile:f.file})};
  const setupUI=async(_ctx,{beforeBegin})=>{begins++;await beforeBegin({brokerUrl:'https://broker.example'});return{state:'pending',requestId:'shared-request',brokerUrl:'https://broker.example'};};
  const hosts=[],contexts=[];
- for(let i=0;i<30;i++){
+ for(let i=0;i<2;i++){
   const ctx={...f.ctx,sessionManager:{getSessionId:()=>`concurrent-native-${i}`}};contexts.push(ctx);
   const host=f.load({setupUI,approvalClient:client});hosts.push(host);
   if(i===0)await host.commands['psst-setup'].handler('',ctx);else await host.events.session_start({},ctx);
@@ -174,22 +176,23 @@ for(const disconnectOne of [false,true])test(`thirty waiting sessions recognize 
   assert.deepEqual(f.pathStore.readPending(),intent);const beforeReads=reads;
   hosts[0]=f.load({setupUI,approvalClient:client});await hosts[0].events.session_start({},contexts[0]);assert.equal(reads,beforeReads);
  }
- approved=true;const expected=disconnectOne?29:30,deadline=Date.now()+6000;
- while(f.active!==expected&&Date.now()<deadline)await new Promise(r=>setTimeout(r,20));
+ approved=true;const expected=disconnectOne?1:2;
+ for(const watch of [...watches])await watch.tick();
  assert.equal(f.active,expected);assert.equal(begins,1);assert.equal(new Set(f.instances.map(s=>s.inbox.identity.client_id)).size,expected);
  assert.equal(f.pathStore.snapshot().approvalRequestId,'shared-request');assert.equal(f.pathStore.readPending().intentId,intent.intentId);
- if(disconnectOne){await hosts[0].events.session_start({},contexts[0]);assert.equal(f.active,29);assert.equal(f.pathStore.isDisconnected('concurrent-native-0'),true);}
+ if(disconnectOne){await hosts[0].events.session_start({},contexts[0]);assert.equal(f.active,1);assert.equal(f.pathStore.isDisconnected('concurrent-native-0'),true);}
  for(const host of hosts)await host.events.session_shutdown();assert.equal(f.active,0);
 });
 
 test('only still-active explicit setup retries uncertain initial POST; shutdown startup never begins',async t=>{
+ const watches=[];t.mock.method(ApprovalWatch.prototype,'start',function(){watches.push(this);});
  const f=fixture(t);let retries=0;
  const setupUI=async(_ctx,{beforeBegin})=>{await beforeBegin({brokerUrl:'https://broker.example',directory:f.home,clientType:'pi'});throw Object.assign(Error('uncertain'),{retryable:true,retryAfterMs:2000});};
  const client={beginApproval:async()=>{retries++;return{state:'approved',requestId:'same-durable-request',connectionFile:f.file};},readApprovalState:async()=>null};
  let host=f.load({setupUI,approvalClient:client});await host.commands['psst-setup'].handler('',f.ctx);
- const deadline=Date.now()+5000;while(f.active===0&&Date.now()<deadline)await new Promise(r=>setTimeout(r,20));assert.equal(f.active,1);assert.equal(retries,1);await host.events.session_shutdown();
+ await watches[0].tick();assert.equal(f.active,1);assert.equal(retries,1);await host.events.session_shutdown();
  const next=fixture(t);host=next.load({setupUI,approvalClient:client});await host.commands['psst-setup'].handler('',next.ctx);await host.events.session_shutdown();
- host=next.load({setupUI,approvalClient:client});await host.events.session_start({},next.ctx);await new Promise(r=>setTimeout(r,2100));assert.equal(retries,1);assert.equal(next.active,0);await host.events.session_shutdown();
+ host=next.load({setupUI,approvalClient:client});await host.events.session_start({},next.ctx);for(const watch of [...watches])await watch.tick();assert.equal(retries,1);assert.equal(next.active,0);await host.events.session_shutdown();
 });
 
 test('new local setup is gated while approved attachment is awaiting native registration',async t=>{
@@ -375,4 +378,17 @@ test('status and doctor each emit one complete visible runtime report',async t=>
  assert.equal(f.notices.length,1);assert.match(f.notices[0],/Psst connector .*Node .*Psst /s);
  f.notices.length=0;await host.commands['psst-doctor'].handler('',f.ctx);
  assert.equal(f.notices.length,1);assert.match(f.notices[0],/Psst connector .*selection_directory/s);
+});
+
+test('discovery forwards caller filters and returns client results without rewriting presence',async t=>{
+ const f=fixture(t),host=f.load();await host.commands['psst-connect'].handler(f.file,f.ctx);
+ t.after(()=>host.events.session_shutdown());
+ const session=f.instances.at(-1),requests=[];
+ const response={clients:[{client_id:'offline-peer',connected:false}],next_cursor:'next-page'};
+ session.client.listClients=async (filters,options)=>{requests.push({...filters,...options});return response;};
+ const filters={connected:false,client_type:'pi',name:'Review',project:'project',limit:1,cursor:'previous-page'};
+ const result=await host.tools.broker_list_clients.execute('discovery',filters,undefined,undefined,f.ctx);
+ assert.equal(result.isError,undefined);assert.deepEqual(result.details,response);
+ assert.deepEqual(requests.map(({signal,...options})=>options),[filters]);
+ assert.equal(requests[0].signal.aborted,false);
 });

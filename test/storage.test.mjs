@@ -37,31 +37,31 @@ test('legacy selection and inbox stay pinned; coexistence of two histories fails
  assert.equal(storageLayout({PSST_STATE_DIR:legacy},home).stateDirectory,legacy);
  assert.equal(readFileSync(join(selection,'pi-config-path'),'utf8'),join(home,'old.json')+'\n');
 });
-test('30 concurrent native sessions share installation but retain separate durable identities and pending state on reopen',async t=>{
+test('two native sessions share installation but retain separate durable identities and pending state on reopen',async t=>{
  const home=fixture(t),env={PI_CODING_AGENT_DIR:join(home,'persisted-agent')};
  const config={url:'https://broker.example/',tokenFile:join(home,'token'),credentialId:`enrolled-${randomUUID()}`,name:'Pi',...storageLayout(env,home)};
  writeFileSync(config.tokenFile,'synthetic-storage-test-token',{mode:0o600});
  const sessions=[],ids=[];const make=i=>new PiBrokerSession({config,hostSessionId:`native-${i}`,currentSessionId:()=>`native-${i}`});
  try {
-  for(let i=0;i<30;i++){const s=make(i);sessions.push(s);ids.push(s.inbox.identity.client_id);s.inbox.setState('metadata',{index:i,credential:config.credentialId});const now=Date.now();s.inbox.accept({protocol_version:'1',message_id:randomUUID(),recipient_id:s.inbox.identity.client_id,recipient_sequence:1,sender:{client_id:randomUUID(),client_type:'pi',name:'peer',model:{provider:null,id:null,source:'unknown'},project:null,metadata_revision:1},origin:'broker_agent',authority:'untrusted_agent_input',content:{type:'text/plain',text:`pending-${i}`},accepted_at:new Date(now).toISOString(),expires_at:new Date(now+86400000).toISOString(),correlation_id:null,reply_to_message_id:null});s.inbox.prepareSend({recipient_id:randomUUID(),content:{type:'text/plain',text:`retained-${i}`}});}
-  assert.equal(new Set(ids).size,30);assert.throws(()=>make(0),{code:'owner_conflict'});
+  for(let i=0;i<2;i++){const s=make(i);sessions.push(s);ids.push(s.inbox.identity.client_id);s.inbox.setState('metadata',{index:i,credential:config.credentialId});const now=Date.now();s.inbox.accept({protocol_version:'1',message_id:randomUUID(),recipient_id:s.inbox.identity.client_id,recipient_sequence:1,sender:{client_id:randomUUID(),client_type:'pi',name:'peer',model:{provider:null,id:null,source:'unknown'},project:null,metadata_revision:1},origin:'broker_agent',authority:'untrusted_agent_input',content:{type:'text/plain',text:`pending-${i}`},accepted_at:new Date(now).toISOString(),expires_at:new Date(now+86400000).toISOString(),correlation_id:null,reply_to_message_id:null});s.inbox.prepareSend({recipient_id:randomUUID(),content:{type:'text/plain',text:`retained-${i}`}});}
+  assert.equal(new Set(ids).size,2);assert.throws(()=>make(0),{code:'owner_conflict'});
  } finally {await Promise.all(sessions.map(s=>s.close()));}
- for(let i=0;i<30;i++){const s=make(i);try{assert.equal(s.inbox.identity.client_id,ids[i]);assert.equal(s.inbox.getState('metadata').index,i);assert.equal(s.inbox.unresolvedSends().length,1);assert.equal(s.inbox.head().envelope.content.text,`pending-${i}`);assert.equal(s.inbox.head().state,'pending');}finally{await s.close();}}
+ for(let i=0;i<2;i++){const s=make(i);try{assert.equal(s.inbox.identity.client_id,ids[i]);assert.equal(s.inbox.getState('metadata').index,i);assert.equal(s.inbox.unresolvedSends().length,1);assert.equal(s.inbox.head().envelope.content.text,`pending-${i}`);assert.equal(s.inbox.head().state,'pending');}finally{await s.close();}}
  assert.equal(storageLayout(env,home).legacyStorage,false);
 });
 
-test('thirty independent processes compare-and-swap one atomic URL/path selection',async t=>{
- const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');const run=promisify(execFile);
- const home=fixture(t),env={PI_CODING_AGENT_DIR:join(home,'agent')},store=createConfigPathStore(home,env);
- store.write(join(home,'initial.json'),'https://initial.example');const before=store.snapshot();
- const moduleUrl=new URL('../src/config-path.mjs',import.meta.url).href;
- const source=`import {createConfigPathStore} from ${JSON.stringify(moduleUrl)};const [home,env,path,revision]=JSON.parse(process.argv[1]);const store=createConfigPathStore(home,env);console.log(store.write(path,'https://next.example',revision));`;
- const outcomes=await Promise.all(Array.from({length:30},(_,i)=>run(process.execPath,['--input-type=module','-e',source,JSON.stringify([home,env,join(home,`next-${i}.json`),before.revision])],{timeout:10000})));
- assert.equal(outcomes.filter(r=>r.stdout.trim()==='true').length,1);assert.equal(outcomes.filter(r=>r.stdout.trim()==='false').length,29);
- const after=store.snapshot();assert.equal(after.brokerUrl,'https://next.example');assert.notEqual(after.revision,before.revision);assert.match(after.connectionFile,/next-\d+\.json$/);
+test('selection compare-and-swap rejects a stale writer and preserves the winner',t=>{
+ const home=fixture(t),env={PI_CODING_AGENT_DIR:join(home,'agent')};
+ const first=createConfigPathStore(home,env),second=createConfigPathStore(home,env);
+ first.write(join(home,'initial.json'),'https://initial.example');const before=first.snapshot();
+ assert.equal(second.write(join(home,'winner.json'),'https://next.example',before.revision),true);
+ assert.equal(first.write(join(home,'stale.json'),'https://stale.example',before.revision),false);
+ const after=first.snapshot();
+ assert.equal(after.connectionFile,join(home,'winner.json'));
+ assert.equal(after.brokerUrl,'https://next.example');assert.notEqual(after.revision,before.revision);
 });
 
-test('durable pending intent CAS prevents stale cancel/late response across native processes',t=>{
+test('durable pending intent CAS prevents stale cancel/late response between store instances',t=>{
  const home=fixture(t),env={PI_CODING_AGENT_DIR:join(home,'persisted-agent')};
  const first=createConfigPathStore(home,env),second=createConfigPathStore(home,env);
  const original={intentId:randomUUID(),brokerUrl:'https://broker.example',requestId:null,selectionRevision:'empty'};

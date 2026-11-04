@@ -2,6 +2,3 @@ node_modules/
 *.tgz
 .env
 coverage/
-
-.artifacts/
-.ci/

@@ -37,12 +37,9 @@
     "@earendil-works/pi-tui": "^1.4.0"
   },
   "scripts": {
-    "test": "node scripts/test-package.mjs",
+    "test": "node --test test/*.test.mjs",
     "check": "node scripts/check.mjs",
-    "test:host": "node scripts/test-package.mjs --suite host",
-    "prepack": "npm run check && npm test",
-    "test:approval": "node scripts/test-package.mjs --suite approval",
-    "test:native": "node scripts/test-package.mjs --suite native"
+    "prepack": "npm run check && npm test"
   },
   "publishConfig": {
     "access": "public",

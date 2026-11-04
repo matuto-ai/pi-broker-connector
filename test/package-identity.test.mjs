@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { CONNECTOR_VERSION, NODE_RANGE } from '../src/runtime-support.mjs';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 test('npm package, lockfile, and documented installation use the matuto-ai scope', () => {
@@ -9,6 +10,8 @@ test('npm package, lockfile, and documented installation use the matuto-ai scope
   assert.equal(pkg.name, '@matuto-ai/pi-psst-connector');
   assert.equal(lock.name, pkg.name);
   assert.equal(lock.packages[''].name, pkg.name);
+  assert.equal(CONNECTOR_VERSION, pkg.version);
+  assert.equal(NODE_RANGE, pkg.engines.node);
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[''].version, pkg.version);
   assert.equal(pkg.repository.url, 'git+https://github.com/matuto-ai/pi-psst-connector.git');
