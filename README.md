@@ -2,7 +2,7 @@
 
 A native Pi extension providing durable, session-bound messaging through the [Psst broker](https://github.com/matuto-ai/psst). Runs **inside the Pi process in your existing sandbox**. No host launcher, local model, provider subscription, or additional service is required by the connector.
 
-**Version 0.7.0 (unreleased source candidate):** readable native Psst history cards (sender/text by default, metadata on expansion), plus automatic-only production delivery, internal durable send identity, sent history/content/resend/cancel tools, readable native-session metadata, compact incoming messages and safe setup diagnostics. Existing URL-only approval, session isolation and receipt recovery are retained. Tested with the official Pi 1.4.0 bundled CLI and SDK, authenticated disposable HTTPS broker/admin UI, native tool round trips and upgrade/resume. Exact-head CI also gates Docker persistence. Model responses are local fixtures; these tests do not access the owner’s provider account or certify a production deployment. See the [acceptance record](docs/acceptance-issue12.md).
+**Version 0.7.0 (unreleased source candidate):** includes the merged connector changes, safe recovery from cached authorization and the native `/psst-reauthorize` command. Current validation is lightweight source syntax and unit tests, including deterministic setup/replacement regressions; CI does not run Docker persistence, a live broker, a native Pi host or a real model/provider account. The [acceptance record](docs/acceptance-issue12.md) describes historical validation of earlier candidates, not fresh evidence for 0.7.0. This version preparation does not publish or deploy the package.
 
 ## Requirements
 
