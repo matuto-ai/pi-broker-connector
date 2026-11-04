@@ -37,12 +37,12 @@
     "@earendil-works/pi-tui": "^1.4.0"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs",
+    "test": "node scripts/test-package.mjs",
     "check": "node scripts/check.mjs",
-    "test:host": "node --test test/native-host.probe.mjs test/tool-operation-host.probe.mjs test/native-card-host.probe.mjs test/native-boundary-host.probe.mjs",
+    "test:host": "node scripts/test-package.mjs --suite host",
     "prepack": "npm run check && npm test",
-    "test:approval": "node --test test/approval-native.probe.mjs",
-    "test:native": "node --test test/upgrade-native.probe.mjs test/authorization-native.probe.mjs test/native-acceptance.probe.mjs test/runtime-native.probe.mjs"
+    "test:approval": "node scripts/test-package.mjs --suite approval",
+    "test:native": "node scripts/test-package.mjs --suite native"
   },
   "publishConfig": {
     "access": "public",

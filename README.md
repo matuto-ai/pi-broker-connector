@@ -483,3 +483,37 @@ are preserved and capacity blocks new notices rather than
 replaying uncertain handoffs. Shutdown aborts/drains the notice poll before
 closing storage. Each poll is bounded to 32 pages of at most ten events, with a three-second
 request deadline. Native host qualification is distinct from fixture tests.
+
+
+### Automatic package integrity
+
+`npm test` now builds an npm tarball from the current candidate and assembles the
+unit/integration test harness in a temporary directory around the extracted
+package. The production `src/`, `extensions/`, `vendor/`, package metadata and
+shipped documents come only from that tarball, never from a source overlay.
+Tests therefore exercise the code users install, including broker persistence,
+transport failures, recovery, cleanup and the real PTY input cases.
+
+The gate rejects missing, extra or stale shipped files, mismatched package/lock
+versions, a loaded runtime version or Node range that disagrees with package
+metadata, changed tarballs and artifacts built from different source inputs.
+Negative-control tests deliberately break those conditions and require failure.
+The historical 0.3.1/0.4.0 upgrade packages and pinned broker protocol fixtures are
+intentional compatibility inputs; they are not claims about the current package.
+
+- `npm test -- --output .artifacts` keeps the tarball and its `.evidence.json`
+  containing source commit, working-tree state, source digest, artifact SHA256,
+  shipped-file hashes and suite results.
+- `PI_TEST_EXPECTED_COMMIT=<sha>` requires that exact, clean Git checkout. CI
+  sets it from its event commit, including the tested merge candidate on PRs.
+- Set `PI_TEST_ARTIFACT` to the saved tarball to reuse it with `npm run test:host`,
+  `npm run test:approval` or `npm run test:native`. Each suite revalidates the
+  artifact against current inputs and runs from its extracted production code.
+  Existing native prerequisites still apply; a missing prerequisite fails.
+- CI builds once and saves the evidence. The release workflow publishes that
+  same tested tarball, rather than rebuilding after tests.
+
+Local edits are allowed for development and are explicitly recorded as a working
+tree, never labeled as a clean committed release. These checks establish current
+candidate/source identity, not that arbitrary upstream `latest` dependencies or
+an already installed package elsewhere have been updated.

@@ -4,7 +4,9 @@ RUN npm install --prefix /opt/pi-host --ignore-scripts --no-audit --no-fund @ear
 WORKDIR /connector
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --legacy-peer-deps --no-audit --no-fund
-COPY extensions ./extensions
-COPY src ./src
-COPY vendor ./vendor
+# Build with the single artifact produced and validated by npm test -- --output .artifacts.
+COPY .artifacts/*.tgz /tmp/pi-package/
+RUN set -- /tmp/pi-package/*.tgz; test "$#" -eq 1 \
+    && tar -xzf "$1" --strip-components=1 -C /connector \
+    && rm -rf /tmp/pi-package
 USER node
