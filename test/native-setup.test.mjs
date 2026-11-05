@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {nativeSetup,nativeBrokerSettings} from '../src/native-setup.mjs';
+import {nativeSetup,nativeBrokerSettings,reauthorizationEndpoint} from '../src/native-setup.mjs';
 function fixture(t){const root=mkdtempSync(join(tmpdir(),'pi-native-setup-'));t.after(()=>rmSync(root,{recursive:true,force:true}));const env={PI_CODING_AGENT_DIR:join(root,'agent')};return{root,env,settings:nativeBrokerSettings(env)};}
 test('explicit native setup asks only URL and delegates durable request creation',async t=>{
  const f=fixture(t),shown=[];let calls=0;
@@ -56,13 +56,13 @@ test('replacement confirmation canceled by session transition cannot begin a req
  assert.equal(begins,0);
 });
 
-test('reauthorize reuses configured target and confirms creation without revoking old access',async t=>{
+test('reauthorize uses the explicit matching target without a URL form and still confirms replacement',async t=>{
  const f=fixture(t),brokerUrl='https://broker.example';let confirms=0,begins=0;
  const ctx={hasUI:true,ui:{input:async()=>{throw Error('configured origin should be reused');},confirm:async(title,text)=>{
   confirms++;assert.match(text,/Target: https:\/\/broker.example/);assert.match(text,/does not revoke/);assert.match(text,/manual revocation/);return true;
  }}};
  for(const state of ['approved','revoked','denied','expired']){
-  const result=await nativeSetup(ctx,{env:f.env,reauthorize:true,selection:{brokerUrl,approvalRequestId:'old'},
+  const result=await nativeSetup(ctx,{env:f.env,reauthorize:true,endpoint:brokerUrl,selection:{brokerUrl,approvalRequestId:'old'},
    resumeRequest:{brokerUrl,requestId:'old'},approvalClient:{readApprovalState:async()=>({state,requestId:'old'}),beginApproval:async options=>{
     begins++;assert.equal(options.replaceRequestId,'old');return {state:'pending',requestId:'new'};
    }}});
@@ -71,9 +71,38 @@ test('reauthorize reuses configured target and confirms creation without revokin
  assert.equal(confirms,4);assert.equal(begins,4);
 });
 
+test('reauthorize rejects missing, malformed and mismatched targets before approval reads or mutation',async t=>{
+ const f=fixture(t),brokerUrl='https://broker.example';
+ const forbidden=()=>assert.fail('rejected input must not reach UI, approval or writes');
+ const ctx={hasUI:true,ui:{input:forbidden,confirm:forbidden}};
+ const opts={env:f.env,reauthorize:true,selection:{brokerUrl},beforeBegin:forbidden,approvalClient:{readApprovalState:forbidden,beginApproval:forbidden}};
+ for(const endpoint of [undefined,'','http://broker.example','https:broker.example','https://broker.example\\\\','https://broker.example?','https://broker.example#','https://broker.example/path','https://user:password@broker.example']){
+  await assert.rejects(nativeSetup(ctx,{...opts,endpoint}),{code:'invalid_configuration'});
+ }
+ await assert.rejects(nativeSetup(ctx,{...opts,endpoint:'https://other.example'}),{code:'broker_origin_mismatch'});
+});
+
+test('reauthorization checks configured origins including bundle and pending-only targets without requiring a valid receipt',t=>{
+ const f=fixture(t),brokerUrl='https://broker.example',other='https://other.example',file=join(f.root,'connection.json');
+ writeFileSync(file,JSON.stringify({broker_url:brokerUrl,enrollment_receipt_file:'enrollment.json'}),{mode:0o600});
+ for(const options of [{selection:{brokerUrl}},{pending:{brokerUrl}},{connectedUrl:brokerUrl},{env:{...f.env,PSST_BROKER_URL:brokerUrl}},{selection:{connectionFile:file}},{env:{...f.env,PSST_CONFIG_FILE:file}},{env:{...f.env,PSST_CONFIG:file}}]){
+  assert.equal(reauthorizationEndpoint(brokerUrl,{env:f.env,...options}),brokerUrl);
+  assert.throws(()=>reauthorizationEndpoint(other,{env:f.env,...options}),{code:'broker_origin_mismatch'});
+ }
+ assert.equal(reauthorizationEndpoint(brokerUrl,{env:f.env}),brokerUrl);
+ assert.equal(reauthorizationEndpoint(brokerUrl,{env:{...f.env,PSST_CONFIG_FILE:file},selection:{brokerUrl:other}}),brokerUrl,'explicit bundle takes precedence over the installation selection');
+});
+
+test('reauthorize without a saved target uses its explicit endpoint and existing confirmation path',async t=>{
+ const f=fixture(t),brokerUrl='https://broker.example';let confirms=0,begins=0,writes=0;
+ const ctx={hasUI:true,ui:{input:()=>assert.fail('no URL-input dialog'),confirm:async()=>{confirms++;return true;}}};
+ const result=await nativeSetup(ctx,{env:f.env,reauthorize:true,endpoint:brokerUrl,beforeBegin:()=>writes++,approvalClient:{readApprovalState:async()=>null,beginApproval:async options=>{begins++;assert.equal(options.brokerUrl,brokerUrl);return {state:'pending',requestId:'new'};}}});
+ assert.equal(result.brokerUrl,brokerUrl);assert.equal(confirms,1);assert.equal(begins,1);assert.equal(writes,1);
+});
+
 test('reauthorize cancellation does not persist intent or begin; pending retries do not confirm a new candidate',async t=>{
  const f=fixture(t),brokerUrl='https://broker.example';let begins=0,writes=0,confirms=0;
- const opts={env:f.env,reauthorize:true,selection:{brokerUrl,approvalRequestId:'old'},beforeBegin:()=>writes++,
+ const opts={env:f.env,reauthorize:true,endpoint:brokerUrl,selection:{brokerUrl,approvalRequestId:'old'},beforeBegin:()=>writes++,
   approvalClient:{readApprovalState:async()=>({state:'approved',requestId:'old'}),beginApproval:async()=>{begins++;return {state:'pending',requestId:'candidate'};}}};
  const ctx={hasUI:true,ui:{confirm:async()=>{confirms++;return false;}}};
  assert.equal(await nativeSetup(ctx,opts),null);assert.equal(writes,0);assert.equal(begins,0);

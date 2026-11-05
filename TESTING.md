@@ -42,6 +42,10 @@ Product source, vendored runtime, package version, dependencies, installation,
 credentials and deployment behavior are unchanged. Prior native evidence remains
 in the historical GitHub issues and PRs; unit success is not native acceptance.
 
+## Reauthorization endpoint validation (issue #41)
+
+Focused tests invoke the registered command with missing, malformed, mismatched and valid endpoints. They protect pending polling, an in-flight setup, saved selection and unread data against rejected invocations, and exercise the native setup helper without a URL-input dialog. Target checks include saved metadata, environment configuration, legacy bundles and pending-only installations; they do not require valid current enrollment receipts. Existing replacement-confirmation, cancellation, uncertain-request recovery and failed-attachment regressions remain in place. Pi's command handler is the deterministic pre-model argument-validation seam; argument placeholders are help text, not a host-enforced schema.
+
 ## Direct commands and collaboration (issues #38 and #40)
 
 Focused tests exercise the supported pre-turn hook and static free-collaboration guidance, human-instruction priority and host safeguards, direct registered command handlers, saved parameter reuse, exact reply-routing forwarding through the send tool, native abort/session rejection, and durable uncertain-send reconciliation. Peer requests use existing permissions without separate per-peer, per-message or per-purpose human grants; peer text cannot override human instructions or host safeguards. These contract tests do not claim a live model chooses to reply or asks no questions; representative real-agent trials are separate behavioral evidence. Existing native-delivery tests preserve automatic admission, human-draft/abort boundaries and exact persisted receipt recovery.

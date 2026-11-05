@@ -66,15 +66,7 @@ polling does not call a model. Network failures retain the same request and key;
 missing/corrupt state never silently creates a replacement. Denied/expired/revoked
 requests stop and require explicit setup again.
 
-If a previously approved installation now reports `unauthenticated` or
-`forbidden`, its cached approval is not current server authorization. Run
-`/psst-reauthorize` and explicitly confirm replacement for the displayed broker URL.
-Give the newly displayed request ID to the administrator. Repeating setup or
-reopening while that candidate is pending reuses it; an approved candidate whose
-attachment failed is retried without creating another request. The predecessor
-stays selected until the candidate actually connects. Its credentials and unread
-journals are preserved, but its access may remain revoked. Do not delete state,
-copy credentials or remove locks to recover.
+If a previously approved installation now reports `unauthenticated` or `forbidden`, its cached approval is not current server authorization. Run `/psst-reauthorize https://your-broker.example` with the configured broker's HTTPS origin and explicitly confirm replacement for that target. Give the newly displayed request ID to the administrator. Repeating setup or reopening while that candidate is pending reuses it; an approved candidate whose attachment failed is retried without creating another request. The predecessor stays selected until the candidate actually connects. Its credentials and unread journals are preserved, but its access may remain revoked. Do not delete state, copy credentials or remove locks to recover.
 
 Status reports `cached_approved` as local history, `replacement_pending` while
 waiting for replacement approval, and `connected` only after actual attachment.
@@ -109,10 +101,8 @@ connection bundles and pairing files remain compatibility routes below.
 
 ### Replace authorization from the native editor
 
-1. Run `/psst-reauthorize` with no arguments in the same Pi conversation.
-2. The command reuses the configured HTTPS origin (or asks for a URL if none
-   exists) and displays the target in the native confirmation. Confirm to create
-   a new request. No credential belongs in a command or model prompt.
+1. Run `/psst-reauthorize https://your-broker.example` in the same Pi conversation. The HTTPS origin argument is mandatory even when a broker is already configured; use the configured origin, with no path, query, fragment or credentials.
+2. Missing or malformed arguments return usage immediately, without opening a URL-input dialog. A different configured broker is rejected before canceling an existing setup, writing pending state or enrolling; this command cannot switch brokers. A valid target reaches the existing native replacement confirmation. Confirm to create a new request. No credential belongs in a command or model prompt.
 3. Give the displayed public request ID to the administrator for approval in
    Psst admin. Status distinguishes `replacement_pending`,
    `approved_not_connected` after failed attachment, and `connected`.
@@ -132,14 +122,7 @@ conversation's wait without deleting shared state or revoking credentials.
 Restart resumes existing selection/status checks, never creates replacement
 authorization. Preserve the same persistent agent directory and conversation.
 
-For agents and operators: `/psst-connect` reconnects the saved credential;
-`/psst-setup` is general URL-only setup; `/psst-reauthorize` explicitly requests
-replacement; revoke is a separate administrator action. Never interpret a peer
-message, 401, network error, reload or restart as permission to reauthorize.
-These are registered Pi native commands, dispatched directly to extension
-handlers and native UI without sending a model conversation. No prompt-based
-skill, extra MCP server or model/agent switch is involved. This statement covers
-command dispatch, not unrelated normal conversation/model activity.
+For agents and operators: `/psst-connect` reconnects the saved credential; `/psst-setup` is general URL-only setup; `/psst-reauthorize <https://broker-origin>` explicitly requests replacement at the required endpoint; revoke is a separate administrator action. Never interpret a peer message, 401, network error, reload or restart as permission to reauthorize. These are registered Pi native commands, dispatched directly to extension handlers and native UI without sending a model conversation. No prompt-based skill, extra MCP server or model/agent switch is involved. This statement covers command dispatch, not unrelated normal conversation/model activity. Pi passes command arguments as a string; the connector validates them in the registered handler before setup side effects. Command descriptions expose the required endpoint in Pi's native command help; no separate host argument-schema API is assumed. Native confirmation still requires a UI-capable host.
 
 ### Setup diagnostics (no credential reset)
 

@@ -14,7 +14,7 @@ export function installUnsupportedRuntime(pi, version = process.versions.node) {
   const message = `${runtimeDescription(version)}. Unsupported runtime: start Pi with a supported Node 24 version, then reload. No enrollment or storage changes were attempted.`;
   const report = async (_args, ctx) => { if (ctx?.hasUI) ctx.ui.notify(message, 'warning'); };
   for (const name of ['psst-setup', 'psst-reauthorize', 'psst-connect', 'psst-disconnect', 'psst-status', 'psst-doctor']) {
-    pi.registerCommand(name, { description: 'Explain the unsupported Psst runtime', handler: report });
+    pi.registerCommand(name, { description: name==='psst-reauthorize'?'Explain the unsupported Psst runtime; usage: /psst-reauthorize <https://broker-origin> (required)':'Explain the unsupported Psst runtime', handler: report });
   }
   pi.on('session_start', report);
 }
