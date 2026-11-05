@@ -44,10 +44,10 @@ export async function nativeSetup(ctx,{env=process.env,settings=nativeBrokerSett
  if(!stillCurrent())return null;
  const resumeApproved=resumeRequest?.brokerUrl===brokerUrl&&resumeRequest.requestId===previous?.requestId&&previous?.state==='approved'&&!isSelectedApproval(selection,brokerUrl,previous.requestId,previous.connectionFile);
  const replace=previous&&previous.state!=='pending'&&!resumeApproved;
- if(replace||(reauthorize&&!previous)){
+ if(replace&&!reauthorize){
   if(!await ctx.ui.confirm('Request replacement authorization?', `Target: ${brokerUrl}. This creates a new approval request and replaces the selected installation authorization only after administrator approval and successful connection. It does not revoke the old credential; manual revocation in Psst admin is a separate human action. Previous credentials and unread messages are preserved, but previous access may no longer work.`)||!stillCurrent())return null;
-  if(replace)options.replaceRequestId=previous.requestId;
  }
+ if(replace)options.replaceRequestId=previous.requestId;
  onPhase('selection_write');await beforeBegin(options);
  if(!stillCurrent())return null;
  onPhase('enrollment_request');const result=await approvalClient.beginApproval(options);

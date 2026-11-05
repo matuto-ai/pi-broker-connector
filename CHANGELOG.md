@@ -4,7 +4,7 @@
 
 - Enable ordinary peer collaboration under existing permissions in the Pi host prompt, send tool and help, without separate per-peer, per-message or per-purpose human grants. Preserve human-instruction priority, host safeguards, task continuity, authenticated routing and uncertain-send recovery.
 - Keep slash commands direct, including unsupported-runtime diagnostics for reauthorization and disconnect. No automatic reply loop or persisted-envelope change.
-- Require `/psst-reauthorize <https://broker-origin>` and reject missing, malformed or mismatched endpoints before setup cancellation or state changes. Preserve the existing replacement confirmation, setup/reconnect paths and pending/unread data.
+- Require `/psst-reauthorize <https://broker-origin>` and reject missing, malformed or mismatched endpoints before setup cancellation or state changes. Treat a valid explicit invocation as replacement intent without another confirmation dialog; retain ordinary setup confirmation, host permissions, administrator approval, reconnect paths and pending/unread data.
 
 ## 0.7.0 — unreleased source candidate
 

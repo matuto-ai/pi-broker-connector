@@ -410,7 +410,7 @@ for(const command of ['psst-setup','psst-reauthorize'])test(`${command}: selecte
  let host=f.load({approvalClient:client});await host.commands[command].handler(args,f.ctx);
  const selected=f.pathStore.snapshot(),intent=f.pathStore.readPending();oldFile=selected.connectionFile;
  const original=readFileSync(oldFile),oldToken=readFileSync(join(oldFile,'..','token'));
- assert.equal(ids.size,1);assert.equal(confirms,command==='psst-reauthorize'?1:0);confirms=0;assert.equal(selected.approvalIntentId,intent.intentId);
+ assert.equal(ids.size,1);assert.equal(confirms,0);assert.equal(selected.approvalIntentId,intent.intentId);
  await host.events.session_shutdown();
  let rejects=0;
  const rejected=()=>{rejects++;throw Object.assign(Error('private server details'),{code:'unauthenticated'});};
@@ -421,16 +421,19 @@ for(const command of ['psst-setup','psst-reauthorize'])test(`${command}: selecte
  assert.ok(!f.notices.at(-1).includes('private server details'));
  approved=false;uncertain=true;
  await host.commands[command].handler(args,f.ctx);
- assert.equal(confirms,1);assert.equal(ids.size,2);assert.equal(keys.size,2);
+ assert.equal(confirms,command==='psst-reauthorize'?0:1);assert.equal(ids.size,2);assert.equal(keys.size,2);
  const candidate=f.pathStore.readPending();
  for(const watch of [...watches])await watch.tick();
  assert.equal(ids.size,2);assert.equal(keys.size,2);assert.equal(posts,3,'retry uses same durable candidate');
+ await host.commands[command].handler(args,f.ctx);
+ assert.equal(ids.size,2);assert.equal(keys.size,2);assert.equal(posts,4,'repeated invocation reconciles the same candidate');
+ assert.equal(f.pathStore.readPending().intentId,candidate.intentId);
  assert.ok(f.notices.some(text=>text.includes([...ids].at(-1))&&text.includes('administrator approval')));
  assert.deepEqual(f.pathStore.snapshot(),selected);
  await host.commands['psst-status'].handler('',f.ctx);assert.match(f.notices.at(-1),/replacement_pending/);
  await host.events.session_shutdown();
  host=f.load({approvalClient:client,createSession:rejected});
- await host.events.session_start({},f.ctx);assert.equal(posts,3);
+ await host.events.session_start({},f.ctx);assert.equal(posts,4);
  approved=true;
  for(const watch of [...watches])await watch.tick();
  assert.deepEqual(f.pathStore.snapshot(),selected,'failed candidate attachment preserves predecessor');
@@ -439,8 +442,22 @@ for(const command of ['psst-setup','psst-reauthorize'])test(`${command}: selecte
  assert.deepEqual(readFileSync(oldFile),original);assert.deepEqual(readFileSync(join(oldFile,'..','token')),oldToken);
  await host.events.session_shutdown();
  host=f.load({approvalClient:client});await host.commands[command].handler(args,f.ctx);
- assert.equal(confirms,1,'approved uncommitted candidate resumes without requesting another replacement');
+ assert.equal(confirms,command==='psst-reauthorize'?0:1,'approved uncommitted candidate resumes without requesting another replacement');
  assert.equal(ids.size,2);assert.notEqual(f.pathStore.read(),oldFile);
+ await host.events.session_shutdown();
+});
+
+for(const transition of ['session switch','shutdown','disconnect'])test(`reauthorize ${transition} during approval read cannot start replacement`,async t=>{
+ const f=fixture(t);f.pathStore.write(f.file,'https://broker.example');const before=f.pathStore.snapshot();
+ let release,reads=0,begins=0;
+ const host=f.load({approvalClient:{readApprovalState:()=>{reads++;return new Promise(resolve=>release=resolve);},beginApproval:()=>{begins++;}}});
+ const pending=host.commands['psst-reauthorize'].handler('https://broker.example',f.ctx);
+ assert.equal(reads,1);
+ if(transition==='session switch')f.setSession('native-B');
+ else if(transition==='shutdown')await host.events.session_shutdown();
+ else await host.commands['psst-disconnect'].handler('',f.ctx);
+ release({state:'approved',requestId:'old'});await pending;
+ assert.equal(begins,0);assert.equal(f.pathStore.readPending(),null);assert.deepEqual(f.pathStore.snapshot(),before);
  await host.events.session_shutdown();
 });
 
