@@ -41,3 +41,7 @@ connector behavior, not execution of a native host.
 Product source, vendored runtime, package version, dependencies, installation,
 credentials and deployment behavior are unchanged. Prior native evidence remains
 in the historical GitHub issues and PRs; unit success is not native acceptance.
+
+## Direct commands and collaboration (issue #38)
+
+Focused tests exercise the supported pre-turn hook and static authorization/scope/denial guidance, direct registered command handlers, saved parameter reuse, exact reply-routing forwarding through the send tool, native abort/session rejection, and durable uncertain-send reconciliation. Authorization is a host/human conversation precondition, not inferred by the connector from peer text. These contract tests do not claim a live model chooses to reply or asks no questions. Existing native-delivery tests preserve automatic admission, human-draft/abort boundaries and exact persisted receipt recovery.
