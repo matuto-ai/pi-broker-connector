@@ -54,7 +54,11 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
     lastSetupDiagnostic = setupDiagnostic(error, phase, requestState, ctx);
     notify(ctx, [diagnosticText(lastSetupDiagnostic), guidance].filter(Boolean).join('\n'), 'warning');
   };
-  const setStatus = ctx => { if (ctx?.hasUI) ctx.ui.setStatus('psst', `Psst: ${status}${approvalStatus ? `; approval ${approvalStatus}` : ''}`); };
+  const transportSummary = () => {
+    const health = ready && owner?.runtime?.status?.();
+    return health ? `heartbeat ${health.heartbeat}; reception ${health.reception}; recovery ${health.recovery}${health.error_code ? ` (${health.error_code})` : ''}` : status;
+  };
+  const setStatus = ctx => { if (ctx?.hasUI) ctx.ui.setStatus('psst', `Psst: ${transportSummary()}${approvalStatus ? `; approval ${approvalStatus}` : ''}`); };
   const refreshMetadata = async ctx => {
     const current = owner;
     if (!ready || !current || ctx.sessionManager.getSessionId() !== current.hostSessionId) return;
@@ -83,16 +87,9 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       const current = createSession({ config, hostSessionId,
         currentSessionId: () => generation === epoch ? ctx.sessionManager.getSessionId() : null,
         observeMetadata: identity => nativeSessionMetadata(pi, ctx, {clientId: identity.client_id, nameOverride: env.PSST_NAME, config, env}),
-        onDiagnostic: event => { if (generation === epoch) {
-          status = event.code; setStatus(ctx);
-          // Stop stale native consumers immediately; lifecycle serialization drains
-          // the old owner before reopening the same binding, never another session.
-          if (event.code === 'session_expired' && ready && owner === current
-            && ctx.sessionManager.getSessionId() === hostSessionId) {
-            delivery?.stop(); facade = null;
-            void schedule(next => connect(ctx, next, config)).catch(() => {});
-          }
-        } } });
+        onHealthChange: () => { if (generation === epoch) setStatus(ctx); },
+        // Diagnostics never reopen an expired identity or select another mailbox.
+        onDiagnostic: event => { if (generation === epoch) { status = event.code; setStatus(ctx); } } });
       owner = current;
       delivery = new NativeDelivery({ session: current, pi, ctx, allowManual: diagnosticManual, canStart: () => nativeBoundary.allows(ctx), diagnostic: code => { if (generation === epoch) { status = code; setStatus(ctx); } } });
       keepHumanPause ||= delivery.humanPaused;
@@ -112,7 +109,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       delete transportTools.broker_receive;
       facade = { ...transportTools,
         ...(diagnosticManual ? createCooperativeInbox({ inbox: current.inbox, isActive: () => current.isAlive() }) : {}),
-        broker_identity: async () => ({ ...current.inbox.identity, metadata: current.metadata, metadata_sync: current.metadataSync, local_mode: delivery?.mode === 'auto' ? 'native_auto' : 'cooperative_pull', status, pending_count: current.inbox.stats().pending_count }) };
+        broker_identity: async () => ({ ...current.inbox.identity, metadata: current.metadata, metadata_sync: current.metadataSync, local_mode: delivery?.mode === 'auto' ? 'native_auto' : 'cooperative_pull', status: transportSummary(), transport: current.runtime?.status?.(), pending_count: current.inbox.stats().pending_count }) };
       connectedConfig = config; ready = true; status = 'connected'; setStatus(ctx); delivery.start();
       presence = new PresenceNotices({session:current,pi,ctx,allowed:()=>delivery?.mode==='auto'&&!delivery?.disconnected,canStart:()=>!delivery?.humanPaused&&nativeBoundary.allows(ctx),diagnostic:code=>{if(generation===epoch){status=code;setStatus(ctx);}}});
       presenceTimer=setInterval(()=>void presence?.tick(),5000);presenceTimer.unref?.();
@@ -316,9 +313,12 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       const lines = [runtimeDescription()];
       try { if(pathStore.snapshot?.()?.approvalRequestId)lines.push('Saved authorization: cached_approved (local history, not current server access).'); } catch { /* Existing diagnostics report invalid selection without exposing paths. */ }
       if (delivery?.humanPaused) lines.push('Psst automatic delivery is paused after an aborted turn. Pending messages are preserved; send your next input or use /psst-connect to resume.');
-      if (lastSetupDiagnostic) lines.push(diagnosticText(lastSetupDiagnostic));
-      if (ready && owner) lines.push(`${metadataSummary(owner.metadata)}; metadata ${owner.metadataSync}.`);
-      lines.push(ready && owner ? `Psst ${status}${approvalStatus ? `; approval ${approvalStatus}` : ''}; client ID ${owner.inbox.identity.client_id}; inbox ${owner.inbox.stats().pending_count} pending. Delivery mode: ${delivery?.mode}. Native acceptance is not model read or action success.` : `Psst ${status}${approvalStatus ? `; approval ${approvalStatus}` : ''}. Use /psst-setup for native first-time setup; /psst-doctor checks local storage without changes.`);
+      if (lastSetupDiagnostic) lines.push(`${ready ? 'Last setup failure (historical): ' : ''}${diagnosticText(lastSetupDiagnostic)}`);
+      if (ready && owner) {
+        lines.push(`${metadataSummary(owner.metadata)}; metadata ${owner.metadataSync}.`);
+        if (status !== 'connected') lines.push(`Last connector event (historical, not current transport health): ${status}.`);
+      }
+      lines.push(ready && owner ? `Psst ${transportSummary()}${approvalStatus ? `; approval ${approvalStatus}` : ''}; client ID ${owner.inbox.identity.client_id}; inbox ${owner.inbox.stats().pending_count} pending. Delivery mode: ${delivery?.mode}. Native acceptance is not model read or action success.` : `Psst ${status}${approvalStatus ? `; approval ${approvalStatus}` : ''}. Use /psst-setup for native first-time setup; /psst-doctor checks local storage without changes.`);
       notify(ctx, lines.join('\n'), lastSetupDiagnostic ? 'warning' : 'info');
     },
   });

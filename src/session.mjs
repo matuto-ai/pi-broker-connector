@@ -17,7 +17,7 @@ function privateDirectory(path) {
 
 /** One native Pi session, one durable identity. Reload/resume reconnects it. */
 export class PiBrokerSession {
-  constructor({ config, hostSessionId, currentSessionId, observeMetadata, onDiagnostic = () => {}, clientOptions = {} }) {
+  constructor({ config, hostSessionId, currentSessionId, observeMetadata, onDiagnostic = () => {}, onHealthChange = () => {}, clientOptions = {} }) {
     if (typeof hostSessionId !== 'string' || !hostSessionId || hostSessionId.length > 256) throw new LocalError('session_mismatch');
     this.hostSessionId = hostSessionId;
     this.currentSessionId = currentSessionId;
@@ -25,6 +25,7 @@ export class PiBrokerSession {
     this.operations = new Set();
     this.operationController = new AbortController();
     this.onDiagnostic = onDiagnostic;
+    this.onHealthChange = onHealthChange;
     this.recovery = null; this.recoveryController = null;
     this.config = config;
     this.clientOptions = clientOptions;
@@ -72,7 +73,7 @@ export class PiBrokerSession {
     this.client = new BrokerClient({url:config.url, tokenFile:config.tokenFile, caFile:config.caFile,
       inbox:this.inbox, requestTimeoutMs:40000, registrationVersion:config.registrationVersion ?? 1, ...this.clientOptions});
     this.runtime = new AdapterRuntime({client:this.client, verifySession:()=>this.isAlive(), isAlive:()=>this.isAlive(),
-      onDiagnostic:this.onDiagnostic, closeOnLostSession:false});
+      onDiagnostic:this.onDiagnostic, onHealthChange:this.onHealthChange, closeOnLostSession:false});
   }
   async replaceExpiredIncarnation() {
     if (!this.isAlive() || this.client.registrationVersion !== 2 || !this.client.expiredIdentityConfirmed) throw new LocalError('session_mismatch');

@@ -2,6 +2,7 @@
 
 ## 0.8.0 — unreleased source candidate
 
+- Automatically recover reception after transient broker outages using bounded heartbeat-supervised recovery rounds in the shared runtime. Preserve the same native session, authorization, durable inbox and retry identities; disconnect, human delivery pauses and permanent security/storage blockers remain enforced. Report current heartbeat/reception/recovery health separately from historical events.
 - Enable ordinary peer collaboration under existing permissions in the Pi host prompt, send tool and help, without separate per-peer, per-message or per-purpose human grants. Preserve human-instruction priority, host safeguards, task continuity, authenticated routing and uncertain-send recovery.
 - Keep slash commands direct, including unsupported-runtime diagnostics for reauthorization and disconnect. No automatic reply loop or persisted-envelope change.
 - Require `/psst-reauthorize <https://broker-origin>` and reject missing, malformed or mismatched endpoints before setup cancellation or state changes. Treat a valid explicit invocation as replacement intent without another confirmation dialog; retain ordinary setup confirmation, host permissions, administrator approval, reconnect paths and pending/unread data.

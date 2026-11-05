@@ -157,6 +157,9 @@ export class BrokerClient {
             if (!String(response.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) throw new LocalError('invalid_response', { effect: 'unknown' });
             const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)));
             if (status < 200 || status >= 300) {
+              if ([502, 503, 504].includes(status) && !ALLOWED_ERROR_CODES.has(value?.error?.code)) {
+                throw new LocalError('request_failed', { effect: 'unknown', retryable: true });
+              }
               const retryAfter = /^\d+$/.test(String(response.headers['retry-after'] ?? '')) ? Math.min(3600, Number(response.headers['retry-after'])) : 0;
               finish(new BrokerError(status, value, retryAfter)); return;
             }
@@ -167,7 +170,12 @@ export class BrokerClient {
             if ((method === 'GET' || path.endsWith('/heartbeat') || method === 'PATCH')
               && typeof timestamp === 'string' && Number.isFinite(Date.parse(timestamp))) this.clockOffset = Date.parse(timestamp) - this.now();
             finish(null, value);
-          } catch (error) { finish(error instanceof LocalError ? error : new LocalError('invalid_response', { effect: 'unknown' })); }
+          } catch (error) {
+            // A gateway's non-protocol error page is an outage, never a valid envelope.
+            const gateway = [502, 503, 504].includes(response.statusCode);
+            finish(gateway ? new LocalError('request_failed', { effect: 'unknown', retryable: true })
+              : error instanceof LocalError ? error : new LocalError('invalid_response', { effect: 'unknown' }));
+          }
         });
       });
       request.on('timeout', () => request.destroy());
@@ -266,7 +274,12 @@ export class BrokerClient {
   }
 
   async heartbeat({ signal } = {}) {
-    return this.request('POST', `/v1/sessions/${this.identity.client_id}/heartbeat`, { body: {}, idempotent: true, signal });
+    const result = await this.request('POST', `/v1/sessions/${this.identity.client_id}/heartbeat`, { body: {}, idempotent: true, signal });
+    if (result?.client_id !== this.identity.client_id || result.lease_epoch !== this.attachment.lease_epoch
+      || !Number.isFinite(Date.parse(result.lease_expires_at)) || !Number.isFinite(Date.parse(result.server_time))) {
+      throw new LocalError('invalid_response', { effect: 'unknown' });
+    }
+    return result;
   }
 
   async closeSession({ signal } = {}) {
