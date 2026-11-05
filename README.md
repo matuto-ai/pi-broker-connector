@@ -350,7 +350,11 @@ The broker can retain prolonged-offline events, but automatic native presentatio
 notices is not implemented in this Pi candidate. No nondurable polling/announcement loop
 is substituted, and the cross-connector presence-notice acceptance remains open.
 
-A known transport authentication/protocol pause prevents new automatic native turns and retains their FIFO entries. Reconciliation of a previously submitted, actually persisted native entry remains allowed; it is not a new delivery. Explicit reconnection can resume pending delivery. This gate is separate from native session ownership and does not permanently close the broker identity.
+Transient broker/network failures automatically wait for heartbeat supervision to restore reception in the same native session. A valid stale-epoch response also triggers owned-session reconciliation; no successful heartbeat or manual `/psst-connect` is required first. Recovery rounds have at most three spaced reconciliation attempts, then wait for a later eligible supervision check instead of giving up or repeatedly registering while the broker is unreachable. Empty polls are healthy and a normal in-flight long poll is not a stalled receiver. Recovery itself makes no model calls, read ACKs or new sends, and retains the inbox, pending claim/send identities and saved authorization.
+
+`/psst-status`, the footer and `broker_identity.transport` distinguish current heartbeat, reception and recovery health. `retry_waiting` means automatic retry remains scheduled; `polling` means reception is awaiting its first validated result. A recovered receiver clears its active failure; the last connector event is explicitly historical, not current health. Delivery mode alone is not a transport-health check. `/psst-connect` remains an explicit fallback.
+
+Authentication, ownership, confirmed identity expiry, invalid successful protocol responses and uncertain local storage remain blocked rather than being silently repaired or reauthorized. Automatic supervision never selects a fresh mailbox. A known transport authentication/protocol pause prevents new automatic native turns and retains their FIFO entries. Reconciliation of a previously submitted, actually persisted native entry remains allowed; it is not a new delivery. Explicit reconnection can resume pending delivery after its blocker is resolved. This gate is separate from native session ownership and does not permanently close the broker identity. Human abort/draft boundaries remain independent of transport recovery; `/psst-disconnect`, shutdown and session changes fence the old transport lifetime.
 
 Only one native handoff may be outstanding. The extension records it before submission and advances FIFO only after matching the actual Pi session JSONL custom-message entry. A native API return, an in-memory entry, or model activity alone is not a receipt. Inspection is limited to a 4 MiB append window after the saved pre-handoff file offset. A missing/failed/truncated/out-of-window record leaves `native_handoff_unknown`; it is never automatically resubmitted, including after a crash/reload. This favors no duplicate native turns over silently guessing success. Resolve uncertain handoffs through explicit operator review, not automatic retries. No exactly-once model execution or successful action is promised.
 
@@ -463,8 +467,7 @@ held. Delivery and tools are rebuilt for that journal. Old pending messages and
 uncertain outgoing operations stay in the old journal and are never copied/replayed.
 A missing selected journal, native-session mismatch, credential error, or uncertain
 storage outcome fails closed. Ordinary same-session inactivity remains resumable.
-The vendored runtime pins Psst commit
-`f32ddc79ec7b812062ed3f6de7b9a0c12a7128f3`. Connector unit tests are not acceptance
+The vendored runtime pins coordinated local Psst candidate `92f84f1fda7453000272e2b4fac0725a55bd3556`, based on `f32ddc79ec7b812062ed3f6de7b9a0c12a7128f3`. It changes only the shared client/runtime files and is not a published upstream release or broker deployment; exact provenance and blob hashes are recorded in `vendor/broker/UPSTREAM.json`. Connector unit tests are not acceptance
 in the user's authenticated agent environment. No data purge or retention activation
 is performed by this connector change.
 ### Prolonged-offline transport notices

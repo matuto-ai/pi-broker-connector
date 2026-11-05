@@ -28,6 +28,18 @@ fixture programs, invoke a model, or require Docker, Python, PTYs, credentials,
 historical packages or another repository. The Node test runner and syntax-check
 script use Node processes only to execute/check the JavaScript files.
 
+## Heartbeat-supervised reception recovery (issue #46)
+
+Reproduce the outage/return scenario without credentials or a model:
+
+```sh
+node --test test/transport-recovery.test.mjs
+```
+
+This test runs the real registered Pi lifecycle, `PiBrokerSession`, shared runtime/client registration and claim journals, durable SQLite inbox, and native handoff/receipt code. A controlled `BrokerClient.request` transport interrupts an in-flight poll, leaves the broker unavailable through multiple supervision intervals, then returns a stale owned lease and queued message. A fake clock advances the actual runtime sleeps. Assertions verify the original owner/client/inbox, delivery only after durable storage, retained uncertain outgoing operation, one native handoff, and no read ACK or new send. Additional scenarios exhaust a three-attempt recovery round before a later successful round, interrupt reception while heartbeats remain healthy, leave an empty/in-flight poll alone, fence shutdown/disconnect/session changes, and retain human abort/draft and permanent security/storage blocks.
+
+Current status is checked after actual inbox recovery, not from wording or monitor presence alone. These are fault-injection unit checks, not evidence from an authenticated Pi host, live broker restart, administrator approval flow or real model. The tests replace the HTTP request boundary; HTTP/proxy parsing is a separate boundary, covered by the shared broker candidate's retained runtime-recovery tests and a disposable loopback HTTP probe against this vendored client. No broker fixture or native-host infrastructure is added here.
+
 ## Cleanup scope (issue #30)
 
 Removed the native-host and PTY probes, broker roundtrip/presence/expiry suites,
