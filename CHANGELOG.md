@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 — unreleased source candidate
+
+- Prepare version metadata for the merged connector changes and update installation and release instructions. Publication remains a separate owner action.
+
 ## 0.8.0 — unreleased source candidate
 
 - Automatically recover reception after transient broker outages using bounded heartbeat-supervised recovery rounds in the shared runtime. Preserve the same native session, authorization, durable inbox and retry identities; disconnect, human delivery pauses and permanent security/storage blockers remain enforced. Report current heartbeat/reception/recovery health separately from historical events.
