@@ -2,7 +2,7 @@
 
 ## 0.8.0 — unreleased source candidate
 
-- Add consistent bounded peer-collaboration guidance in the Pi host prompt, send tool and help: reuse authenticated routing and existing human authorization, while preserving scope/security checks and uncertain-send recovery.
+- Enable ordinary peer collaboration under existing permissions in the Pi host prompt, send tool and help, without separate per-peer, per-message or per-purpose human grants. Preserve human-instruction priority, host safeguards, task continuity, authenticated routing and uncertain-send recovery.
 - Keep slash commands direct, including unsupported-runtime diagnostics for reauthorization and disconnect. No automatic reply loop or persisted-envelope change.
 
 ## 0.7.0 — unreleased source candidate
