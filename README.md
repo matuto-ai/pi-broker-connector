@@ -467,7 +467,7 @@ held. Delivery and tools are rebuilt for that journal. Old pending messages and
 uncertain outgoing operations stay in the old journal and are never copied/replayed.
 A missing selected journal, native-session mismatch, credential error, or uncertain
 storage outcome fails closed. Ordinary same-session inactivity remains resumable.
-The vendored runtime pins coordinated local Psst candidate `7589697e253b2502448d5f7d734c85c775444cb3`, based on `f32ddc79ec7b812062ed3f6de7b9a0c12a7128f3`. It changes only the shared client/runtime files and is not a published upstream release or broker deployment; exact provenance and blob hashes are recorded in `vendor/broker/UPSTREAM.json`. Connector unit tests are not acceptance
+The vendored runtime pins coordinated local Psst candidate `92f84f1fda7453000272e2b4fac0725a55bd3556`, based on `f32ddc79ec7b812062ed3f6de7b9a0c12a7128f3`. It changes only the shared client/runtime files and is not a published upstream release or broker deployment; exact provenance and blob hashes are recorded in `vendor/broker/UPSTREAM.json`. Connector unit tests are not acceptance
 in the user's authenticated agent environment. No data purge or retention activation
 is performed by this connector change.
 ### Prolonged-offline transport notices

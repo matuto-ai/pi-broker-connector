@@ -275,6 +275,7 @@ export class AdapterRuntime {
           this.reconcileNeeded = false;
           this.retryNotBefore = 0;
           this.receptionState = 'polling';
+          if (!this.receiveEnabled) { this.receptionError = null; this.recoveryState = 'idle'; }
           this.healthChanged();
           return;
         } catch (error) {
