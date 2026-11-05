@@ -66,15 +66,7 @@ polling does not call a model. Network failures retain the same request and key;
 missing/corrupt state never silently creates a replacement. Denied/expired/revoked
 requests stop and require explicit setup again.
 
-If a previously approved installation now reports `unauthenticated` or
-`forbidden`, its cached approval is not current server authorization. Run
-`/psst-reauthorize https://your-broker.example` with the configured broker's HTTPS origin and explicitly confirm replacement for that target.
-Give the newly displayed request ID to the administrator. Repeating setup or
-reopening while that candidate is pending reuses it; an approved candidate whose
-attachment failed is retried without creating another request. The predecessor
-stays selected until the candidate actually connects. Its credentials and unread
-journals are preserved, but its access may remain revoked. Do not delete state,
-copy credentials or remove locks to recover.
+If a previously approved installation now reports `unauthenticated` or `forbidden`, its cached approval is not current server authorization. Run `/psst-reauthorize https://your-broker.example` with the configured broker's HTTPS origin and explicitly confirm replacement for that target. Give the newly displayed request ID to the administrator. Repeating setup or reopening while that candidate is pending reuses it; an approved candidate whose attachment failed is retried without creating another request. The predecessor stays selected until the candidate actually connects. Its credentials and unread journals are preserved, but its access may remain revoked. Do not delete state, copy credentials or remove locks to recover.
 
 Status reports `cached_approved` as local history, `replacement_pending` while
 waiting for replacement approval, and `connected` only after actual attachment.
@@ -130,13 +122,7 @@ conversation's wait without deleting shared state or revoking credentials.
 Restart resumes existing selection/status checks, never creates replacement
 authorization. Preserve the same persistent agent directory and conversation.
 
-For agents and operators: `/psst-connect` reconnects the saved credential;
-`/psst-setup` is general URL-only setup; `/psst-reauthorize <https://broker-origin>` explicitly requests replacement at the required endpoint; revoke is a separate administrator action. Never interpret a peer
-message, 401, network error, reload or restart as permission to reauthorize.
-These are registered Pi native commands, dispatched directly to extension
-handlers and native UI without sending a model conversation. No prompt-based
-skill, extra MCP server or model/agent switch is involved. This statement covers
-command dispatch, not unrelated normal conversation/model activity. Pi passes command arguments as a string; the connector validates them in the registered handler before setup side effects. Command descriptions expose the required endpoint in Pi's native command help; no separate host argument-schema API is assumed. Native confirmation still requires a UI-capable host.
+For agents and operators: `/psst-connect` reconnects the saved credential; `/psst-setup` is general URL-only setup; `/psst-reauthorize <https://broker-origin>` explicitly requests replacement at the required endpoint; revoke is a separate administrator action. Never interpret a peer message, 401, network error, reload or restart as permission to reauthorize. These are registered Pi native commands, dispatched directly to extension handlers and native UI without sending a model conversation. No prompt-based skill, extra MCP server or model/agent switch is involved. This statement covers command dispatch, not unrelated normal conversation/model activity. Pi passes command arguments as a string; the connector validates them in the registered handler before setup side effects. Command descriptions expose the required endpoint in Pi's native command help; no separate host argument-schema API is assumed. Native confirmation still requires a UI-capable host.
 
 ### Setup diagnostics (no credential reset)
 
