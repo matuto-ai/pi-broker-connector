@@ -56,11 +56,9 @@ test('replacement confirmation canceled by session transition cannot begin a req
  assert.equal(begins,0);
 });
 
-test('reauthorize uses the explicit matching target without a URL form and still confirms replacement',async t=>{
- const f=fixture(t),brokerUrl='https://broker.example';let confirms=0,begins=0;
- const ctx={hasUI:true,ui:{input:async()=>{throw Error('configured origin should be reused');},confirm:async(title,text)=>{
-  confirms++;assert.match(text,/Target: https:\/\/broker.example/);assert.match(text,/does not revoke/);assert.match(text,/manual revocation/);return true;
- }}};
+test('reauthorize uses the explicit matching target as replacement intent without any form',async t=>{
+ const f=fixture(t),brokerUrl='https://broker.example';let begins=0;
+ const ctx={hasUI:true,ui:{input:()=>assert.fail('no URL form'),confirm:()=>assert.fail('no redundant confirmation')}};
  for(const state of ['approved','revoked','denied','expired']){
   const result=await nativeSetup(ctx,{env:f.env,reauthorize:true,endpoint:brokerUrl,selection:{brokerUrl,approvalRequestId:'old'},
    resumeRequest:{brokerUrl,requestId:'old'},approvalClient:{readApprovalState:async()=>({state,requestId:'old'}),beginApproval:async options=>{
@@ -68,7 +66,7 @@ test('reauthorize uses the explicit matching target without a URL form and still
    }}});
   assert.equal(result.requestId,'new');
  }
- assert.equal(confirms,4);assert.equal(begins,4);
+ assert.equal(begins,4);
 });
 
 test('reauthorize rejects missing, malformed and mismatched targets before approval reads or mutation',async t=>{
@@ -93,19 +91,30 @@ test('reauthorization checks configured origins including bundle and pending-onl
  assert.equal(reauthorizationEndpoint(brokerUrl,{env:{...f.env,PSST_CONFIG_FILE:file},selection:{brokerUrl:other}}),brokerUrl,'explicit bundle takes precedence over the installation selection');
 });
 
-test('reauthorize without a saved target uses its explicit endpoint and existing confirmation path',async t=>{
- const f=fixture(t),brokerUrl='https://broker.example';let confirms=0,begins=0,writes=0;
- const ctx={hasUI:true,ui:{input:()=>assert.fail('no URL-input dialog'),confirm:async()=>{confirms++;return true;}}};
+test('reauthorize without a saved target uses its explicit endpoint without dialog capabilities',async t=>{
+ const f=fixture(t),brokerUrl='https://broker.example';let begins=0,writes=0;
+ const ctx={hasUI:true};
  const result=await nativeSetup(ctx,{env:f.env,reauthorize:true,endpoint:brokerUrl,beforeBegin:()=>writes++,approvalClient:{readApprovalState:async()=>null,beginApproval:async options=>{begins++;assert.equal(options.brokerUrl,brokerUrl);return {state:'pending',requestId:'new'};}}});
- assert.equal(result.brokerUrl,brokerUrl);assert.equal(confirms,1);assert.equal(begins,1);assert.equal(writes,1);
+ assert.equal(result.brokerUrl,brokerUrl);assert.equal(begins,1);assert.equal(writes,1);
 });
 
-test('reauthorize cancellation does not persist intent or begin; pending retries do not confirm a new candidate',async t=>{
- const f=fixture(t),brokerUrl='https://broker.example';let begins=0,writes=0,confirms=0;
- const opts={env:f.env,reauthorize:true,endpoint:brokerUrl,selection:{brokerUrl,approvalRequestId:'old'},beforeBegin:()=>writes++,
-  approvalClient:{readApprovalState:async()=>({state:'approved',requestId:'old'}),beginApproval:async()=>{begins++;return {state:'pending',requestId:'candidate'};}}};
- const ctx={hasUI:true,ui:{confirm:async()=>{confirms++;return false;}}};
- assert.equal(await nativeSetup(ctx,opts),null);assert.equal(writes,0);assert.equal(begins,0);
- opts.approvalClient.readApprovalState=async()=>({state:'pending',requestId:'candidate'});
- await nativeSetup(ctx,opts);assert.equal(confirms,1);assert.equal(begins,1);assert.equal(writes,1);
+test('reauthorize session cancellation and host UI denial cannot persist intent or begin',async t=>{
+ const f=fixture(t),brokerUrl='https://broker.example';let current=true;
+ const forbidden=()=>assert.fail('canceled or denied command must not write or enroll');
+ const opts={env:f.env,reauthorize:true,endpoint:brokerUrl,stillCurrent:()=>current,beforeBegin:forbidden,
+  approvalClient:{readApprovalState:async()=>{current=false;return {state:'approved',requestId:'old'};},beginApproval:forbidden}};
+ await assert.rejects(nativeSetup({hasUI:false},opts),{code:'native_input_unavailable'});
+ assert.equal(current,true,'host UI denial must not read approval');
+ assert.equal(await nativeSetup({hasUI:true},opts),null);
+});
+
+test('reauthorize resumes pending and approved uncommitted candidates without replacement or confirmation',async t=>{
+ const f=fixture(t),brokerUrl='https://broker.example';
+ const ctx={hasUI:true,ui:{confirm:()=>assert.fail('no redundant confirmation')}};
+ for(const state of ['pending','approved']){
+  const previous={state,requestId:'candidate',connectionFile:'/fixture/candidate.json'};
+  const result=await nativeSetup(ctx,{env:f.env,reauthorize:true,endpoint:brokerUrl,selection:{brokerUrl,approvalRequestId:'old'},resumeRequest:{brokerUrl,requestId:'candidate'},
+   approvalClient:{readApprovalState:async()=>previous,beginApproval:async options=>{assert.equal(options.replaceRequestId,undefined);return previous;}}});
+  assert.equal(result.requestId,'candidate');
+ }
 });

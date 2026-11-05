@@ -9,7 +9,7 @@ export const COLLABORATION_GUIDANCE = [
   REPLY_ROUTING_GUIDANCE,
   SEND_RECOVERY_GUIDANCE,
   'Production peer delivery is automatic native admission; never add manual receive/ACK steps. Native command dispatch does not require a model turn; peer replies are model/tool behavior under existing permissions and host policy, not a deterministic auto-responder.',
-  'Respect native denials and preserve the conversation, recipient binding, selected model/agent, human drafts, permissions, credentials and unread journals. /psst-connect reuses the saved credential; /psst-reauthorize <https://broker-origin> requires the explicit endpoint and requests new authorization with required confirmation and administrator approval; revocation is a separate human admin action.',
+  'Respect native denials and preserve the conversation, recipient binding, selected model/agent, human drafts, permissions, credentials and unread journals. /psst-connect reuses the saved credential; /psst-reauthorize <https://broker-origin> supplies replacement intent at the explicit endpoint without another conversational confirmation; host permission enforcement and broker administrator approval still apply. Ordinary setup and background recovery do not inherit that intent; revocation is a separate human admin action.',
 ].join('\n');
 
 export function withCollaborationGuidance(systemPrompt) {

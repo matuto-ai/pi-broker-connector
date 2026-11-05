@@ -198,7 +198,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
   for(const command of ['psst-setup','psst-reauthorize']) {
   const reauthorize=command==='psst-reauthorize';
   pi.registerCommand(command, {
-    description: reauthorize?'Request replacement Psst authorization: /psst-reauthorize <https://broker-origin> (required); does not revoke old credentials':'Request administrator approval using only the broker URL',
+    description: reauthorize?'Request replacement Psst authorization: /psst-reauthorize <https://broker-origin> (required); no extra confirmation; administrator approval required; does not revoke old credentials':'Request administrator approval using only the broker URL',
     handler: async (args, ctx) => {
       let endpoint,selection,previousPending;
       if(reauthorize){
@@ -207,7 +207,7 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
         try{
           selection=pathStore.snapshot?.();previousPending=pathStore.readPending?.();
           endpoint=reauthorizationEndpoint(endpoint,{env,selection,pending:previousPending,connectedUrl:connectedConfig?.url});
-          if(!ctx?.hasUI||typeof ctx.ui?.confirm!=='function')throw new LocalError('native_input_unavailable');
+          if(!ctx?.hasUI)throw new LocalError('native_input_unavailable');
         }catch(error){reportSetupFailure(ctx,error,'url_validation','not_started');return;}
       }else if(args.trim()){notify(ctx,`Use /${command} without arguments. Enter only the URL in the native form.`,'warning');return;}
       if(attachmentActive){notify(ctx,'Psst is attaching an approved connection. Wait for that transition before starting another setup.','warning');return;}

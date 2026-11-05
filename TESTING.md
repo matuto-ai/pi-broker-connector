@@ -44,7 +44,11 @@ in the historical GitHub issues and PRs; unit success is not native acceptance.
 
 ## Reauthorization endpoint validation (issue #41)
 
-Focused tests invoke the registered command with missing, malformed, mismatched and valid endpoints. They protect pending polling, an in-flight setup, saved selection and unread data against rejected invocations, and exercise the native setup helper without a URL-input dialog. Target checks include saved metadata, environment configuration, legacy bundles and pending-only installations; they do not require valid current enrollment receipts. Existing replacement-confirmation, cancellation, uncertain-request recovery and failed-attachment regressions remain in place. Pi's command handler is the deterministic pre-model argument-validation seam; argument placeholders are help text, not a host-enforced schema.
+Focused tests invoke the registered command with missing, malformed, mismatched and valid endpoints. They protect pending polling, an in-flight setup, saved selection and unread data against rejected invocations, and exercise the native setup helper without a URL-input dialog. Target checks include saved metadata, environment configuration, legacy bundles and pending-only installations; they do not require valid current enrollment receipts. Ordinary setup's replacement-confirmation, cancellation, uncertain-request recovery and failed-attachment regressions remain in place. Pi's command handler is the deterministic pre-model argument-validation seam; argument placeholders are help text, not a host-enforced schema.
+
+## Explicit reauthorization intent (issue #42)
+
+Focused tests execute the registered reauthorization command through the real native setup helper and durable approval helper with a controlled transport. A valid endpoint needs no input/confirmation capability or extra question; the host UI gate, endpoint validation, ordinary setup confirmation and administrator-pending state remain enforced. Tests cover repeated/uncertain attempts retaining one candidate, failed attachment preserving the predecessor, approved-candidate recovery, and session-switch/shutdown/disconnect fences during approval reads. No model-facing reauthorization tool is registered. These checks are not live-broker or real-agent acceptance evidence; record disposable native-host trials separately rather than treating wording assertions as model compliance.
 
 ## Direct commands and collaboration (issues #38 and #40)
 
