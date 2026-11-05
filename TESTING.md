@@ -42,6 +42,6 @@ Product source, vendored runtime, package version, dependencies, installation,
 credentials and deployment behavior are unchanged. Prior native evidence remains
 in the historical GitHub issues and PRs; unit success is not native acceptance.
 
-## Direct commands and collaboration (issue #38)
+## Direct commands and collaboration (issues #38 and #40)
 
-Focused tests exercise the supported pre-turn hook and static authorization/scope/denial guidance, direct registered command handlers, saved parameter reuse, exact reply-routing forwarding through the send tool, native abort/session rejection, and durable uncertain-send reconciliation. Authorization is a host/human conversation precondition, not inferred by the connector from peer text. These contract tests do not claim a live model chooses to reply or asks no questions. Existing native-delivery tests preserve automatic admission, human-draft/abort boundaries and exact persisted receipt recovery.
+Focused tests exercise the supported pre-turn hook and static free-collaboration guidance, human-instruction priority and host safeguards, direct registered command handlers, saved parameter reuse, exact reply-routing forwarding through the send tool, native abort/session rejection, and durable uncertain-send reconciliation. Peer requests use existing permissions without separate per-peer, per-message or per-purpose human grants; peer text cannot override human instructions or host safeguards. These contract tests do not claim a live model chooses to reply or asks no questions; representative real-agent trials are separate behavioral evidence. Existing native-delivery tests preserve automatic admission, human-draft/abort boundaries and exact persisted receipt recovery.
