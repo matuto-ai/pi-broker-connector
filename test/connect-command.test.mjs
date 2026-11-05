@@ -406,7 +406,8 @@ for(const command of ['psst-setup','psst-reauthorize'])test(`${command}: selecte
  };
  const client={readApprovalState:helper.readApprovalState,beginApproval:o=>helper.beginApproval(o,{transport}),pollApproval:o=>helper.pollApproval(o,{transport,pollIntervalMs:0})};
  f.ctx.ui.input=async()=> 'https://broker.example';f.ctx.ui.confirm=async()=>{confirms++;return true;};
- let host=f.load({approvalClient:client});await host.commands[command].handler('',f.ctx);
+ const args=command==='psst-reauthorize'?'https://broker.example':'';
+ let host=f.load({approvalClient:client});await host.commands[command].handler(args,f.ctx);
  const selected=f.pathStore.snapshot(),intent=f.pathStore.readPending();oldFile=selected.connectionFile;
  const original=readFileSync(oldFile),oldToken=readFileSync(join(oldFile,'..','token'));
  assert.equal(ids.size,1);assert.equal(confirms,command==='psst-reauthorize'?1:0);confirms=0;assert.equal(selected.approvalIntentId,intent.intentId);
@@ -419,7 +420,7 @@ for(const command of ['psst-setup','psst-reauthorize'])test(`${command}: selecte
  await host.commands['psst-status'].handler('',f.ctx);assert.match(f.notices.at(-1),/cached_approved.*unauthenticated/s);
  assert.ok(!f.notices.at(-1).includes('private server details'));
  approved=false;uncertain=true;
- await host.commands[command].handler('',f.ctx);
+ await host.commands[command].handler(args,f.ctx);
  assert.equal(confirms,1);assert.equal(ids.size,2);assert.equal(keys.size,2);
  const candidate=f.pathStore.readPending();
  for(const watch of [...watches])await watch.tick();
@@ -437,22 +438,66 @@ for(const command of ['psst-setup','psst-reauthorize'])test(`${command}: selecte
  await host.commands['psst-status'].handler('',f.ctx);assert.match(f.notices.at(-1),/approved_not_connected/);
  assert.deepEqual(readFileSync(oldFile),original);assert.deepEqual(readFileSync(join(oldFile,'..','token')),oldToken);
  await host.events.session_shutdown();
- host=f.load({approvalClient:client});await host.commands[command].handler('',f.ctx);
+ host=f.load({approvalClient:client});await host.commands[command].handler(args,f.ctx);
  assert.equal(confirms,1,'approved uncommitted candidate resumes without requesting another replacement');
  assert.equal(ids.size,2);assert.notEqual(f.pathStore.read(),oldFile);
  await host.events.session_shutdown();
 });
 
-test('reauthorize dispatch uses shared native setup handler, no arguments or model tool',async t=>{
+test('reauthorize dispatch requires an explicit endpoint and forwards its normalized value without a model tool',async t=>{
  const f=fixture(t);f.pathStore.write(f.file,'https://broker.example');let calls=0;
- const host=f.load({setupUI:async(_ctx,options)=>{calls++;assert.equal(options.reauthorize,true);assert.equal(options.selection.brokerUrl,'https://broker.example');return null;}});
- assert.match(host.commands['psst-reauthorize'].description,/does not revoke/);
+ f.ctx.ui.input=f.ctx.ui.confirm=()=>assert.fail('dispatch must not open a form');
+ const host=f.load({setupUI:async(_ctx,options)=>{calls++;assert.equal(options.reauthorize,true);assert.equal(options.endpoint,'https://broker.example');return null;}});
+ assert.match(host.commands['psst-reauthorize'].description,/<https:\/\/broker-origin> \(required\)/);
  assert.equal(host.tools['psst-reauthorize'],undefined);
  const before=f.pathStore.snapshot();
- await host.commands['psst-reauthorize'].handler('secret-not-accepted',f.ctx);assert.equal(calls,0);
- assert.equal(f.notices.some(text=>text.includes('secret-not-accepted')),false);
- await host.commands['psst-reauthorize'].handler('',f.ctx);assert.equal(calls,1);
+ for(const args of ['', ' ', 'secret-not-accepted', 'http://broker.example', 'https:broker.example', 'https://broker.example/path', 'https://broker.example?', 'https://broker.example#', 'https://user:password@broker.example', 'https://broker.example https://other.example']){
+  await host.commands['psst-reauthorize'].handler(args,f.ctx);
+  assert.match(f.notices.at(-1),/Usage: \/psst-reauthorize/);assert.equal(calls,0);
+ }
+ assert.equal(f.notices.some(text=>text.includes('secret-not-accepted')||text.includes('password')),false);
+ await host.commands['psst-reauthorize'].handler('https://other.example',f.ctx);
+ assert.match(f.notices.at(-1),/broker_origin_mismatch/);assert.equal(calls,0);
+ await host.commands['psst-reauthorize'].handler('https://BROKER.EXAMPLE:443/',f.ctx);assert.equal(calls,1);
  assert.deepEqual(f.pathStore.snapshot(),before);assert.equal(f.pathStore.readPending(),null);
+ await host.events.session_shutdown();
+});
+
+test('rejected reauthorization preserves pending polling, selected connection and unread data',async t=>{
+ const f=fixture(t),watches=[];let polls=0,begins=0;
+ t.mock.method(ApprovalWatch.prototype,'start',function(){watches.push(this);});
+ f.pathStore.write(f.file,'https://broker.example');
+ const pending={intentId:'pending-intent',brokerUrl:'https://broker.example',requestId:'pending-request',replaceRequestId:null,selectionRevision:f.pathStore.snapshot().revision};
+ f.pathStore.writePending(pending);
+ const host=f.load({approvalClient:{readApprovalState:async()=>({state:'pending',requestId:'pending-request'}),pollApproval:async()=>{polls++;return {state:'pending',requestId:'pending-request'};},beginApproval:async()=>{begins++;}}});
+ f.ctx.ui.confirm=()=>assert.fail('no replacement confirmation for rejected input');
+ f.ctx.ui.input=()=>assert.fail('no URL input for reauthorization');
+ await host.events.session_start({},f.ctx);
+ const session=f.instances.at(-1),{cardEnvelope}=await import('./card-fixture.mjs'),now=Date.now();
+ session.inbox.accept({...cardEnvelope(),recipient_id:session.inbox.identity.client_id,accepted_at:new Date(now).toISOString(),expires_at:new Date(now+3600000).toISOString()});
+ const before=f.pathStore.snapshot(),head=session.inbox.head(),watch=watches[0];assert.ok(watch.current());
+ for(const args of ['', 'http://broker.example', 'https://other.example'])await host.commands['psst-reauthorize'].handler(args,f.ctx);
+ f.ctx.hasUI=false;await host.commands['psst-reauthorize'].handler('https://broker.example',f.ctx);f.ctx.hasUI=true;
+ assert.ok(watch.current(),'rejected invocation must not cancel the existing watch');
+ await watch.tick();assert.equal(polls,1);assert.equal(begins,0);
+ assert.deepEqual(f.pathStore.snapshot(),before);assert.deepEqual(f.pathStore.readPending(),pending);
+ assert.equal(f.active,1);assert.deepEqual(session.inbox.head(),head);
+ await host.events.session_shutdown();
+});
+
+test('rejected invocation leaves an in-flight setup current and able to finish',async t=>{
+ const f=fixture(t);let release,activeOptions;
+ f.ctx.ui.confirm=()=>assert.fail('dispatch must not confirm');
+ const host=f.load({setupUI:async(_ctx,options)=>{activeOptions=options;return new Promise(resolve=>{release=resolve;});}});
+ const active=host.commands['psst-setup'].handler('',f.ctx);
+ assert.ok(activeOptions.stillCurrent());
+ for(const args of ['', 'http://broker.example', 'https://other.example']){
+  f.env.PSST_BROKER_URL='https://broker.example';
+  await host.commands['psst-reauthorize'].handler(args,f.ctx);
+  assert.ok(activeOptions.stillCurrent());
+ }
+ release(null);await active;
+ assert.equal(f.pathStore.readPending(),null);
  await host.events.session_shutdown();
 });
 

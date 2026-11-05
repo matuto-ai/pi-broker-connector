@@ -8,7 +8,7 @@ import { setupDiagnostic, diagnosticText, inspectPsstStorage, doctorText } from 
 import { toolOperationContext } from './tool-operation.mjs';
 import {storageLayout} from './storage.mjs';
 import {ApprovalWatch} from './approval-watch.mjs';
-import {nativeSetup,brokerOrigin,isSelectedApproval} from './native-setup.mjs';
+import {nativeSetup,brokerOrigin,reauthorizationEndpoint,isSelectedApproval} from './native-setup.mjs';
 import { resolveConnectionFile } from './connect-config.mjs';
 import { NativeDelivery, CUSTOM_TYPE } from './native-delivery.mjs';
 import { renderPsstMessage, renderPresenceNotice } from './message-renderer.mjs';
@@ -198,10 +198,19 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
   for(const command of ['psst-setup','psst-reauthorize']) {
   const reauthorize=command==='psst-reauthorize';
   pi.registerCommand(command, {
-    description: reauthorize?'Request replacement Psst authorization; does not revoke old credentials':'Request administrator approval using only the broker URL',
+    description: reauthorize?'Request replacement Psst authorization: /psst-reauthorize <https://broker-origin> (required); does not revoke old credentials':'Request administrator approval using only the broker URL',
     handler: async (args, ctx) => {
+      let endpoint,selection,previousPending;
+      if(reauthorize){
+        try{endpoint=brokerOrigin(args.trim());}
+        catch{notify(ctx,'Usage: /psst-reauthorize <https://broker-origin>. Supply the explicit HTTPS origin without a path, query or credentials.','warning');return;}
+        try{
+          selection=pathStore.snapshot?.();previousPending=pathStore.readPending?.();
+          endpoint=reauthorizationEndpoint(endpoint,{env,selection,pending:previousPending,connectedUrl:connectedConfig?.url});
+          if(!ctx?.hasUI||typeof ctx.ui?.confirm!=='function')throw new LocalError('native_input_unavailable');
+        }catch(error){reportSetupFailure(ctx,error,'url_validation','not_started');return;}
+      }else if(args.trim()){notify(ctx,`Use /${command} without arguments. Enter only the URL in the native form.`,'warning');return;}
       if(attachmentActive){notify(ctx,'Psst is attaching an approved connection. Wait for that transition before starting another setup.','warning');return;}
-      if(args.trim()){notify(ctx,`Use /${command} without arguments. Enter only the URL in the native form.`,'warning');return;}
       cancelSetup();
       const attempt=setupGeneration,initial=generation,nativeId=ctx.sessionManager.getSessionId();
       const stillCurrent=()=>attempt===setupGeneration&&initial===generation&&ctx.sessionManager.getSessionId()===nativeId;
@@ -209,9 +218,9 @@ export function installExtension(pi, Type, { configReader = readConfig, env = pr
       lastSetupDiagnostic=null;
       const onPhase=value=>{phase=value;if(value==='enrollment_request')requestState='outcome_unknown';};
       try {
-        const selection=pathStore.snapshot?.(),revision=selection?.revision;
-        const previousPending=pathStore.readPending?.();
-        const selected=await setupUI(ctx,{env,approvalClient,resumeRequest:previousPending,selection,reauthorize,stillCurrent,onPhase,beforeBegin:options=>{
+        if(!reauthorize){selection=pathStore.snapshot?.();previousPending=pathStore.readPending?.();}
+        const revision=selection?.revision;
+        const selected=await setupUI(ctx,{env,approvalClient,resumeRequest:previousPending,selection,reauthorize,endpoint,stillCurrent,onPhase,beforeBegin:options=>{
           phase='selection_write';
           if(!stillCurrent())throw new LocalError('session_mismatch');
           setupOptions={...options};
